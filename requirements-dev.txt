@@ -1,0 +1,2 @@
+-r 06-Haziran/requirements.txt
+pytest==9.1.1

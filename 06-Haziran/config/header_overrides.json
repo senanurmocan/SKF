@@ -1,0 +1,152 @@
+{
+  "SPECIAL_HEADER_MAPPING": {
+    "AKEDAŞ": {
+      "etso": "Id",
+      "musteri": null
+    },
+    "Çamlıbel EDAŞ": {
+      "tarife": 47,
+      "ag_og": 47,
+      "terim": 47
+    },
+    "ÇAMLIBEL EDAŞ": {
+      "tarife": 47,
+      "ag_og": 47,
+      "terim": 47
+    },
+    "YEŞİLIRMAK EDAŞ": {
+      "etso": "Etso/Kullanıcı",
+      "musteri": "Müşteri Grubu",
+      "güç_bedeli": "Güç Bedeli (TL)",
+      "reaktif": "Reaktif Bedeli (TL)",
+      "reaktif_tenzil": "İlk Reaktif İade Tutar"
+    },
+    "Toroslar EDAŞ": {
+      "ag_og": "Gerilim Seviyesi"
+    },
+    "Meram EDAŞ": {
+      "reaktif": "REAKTİF TÜKETİM"
+    },
+    "MERAM EDAŞ": {
+      "reaktif": "REAKTİF TÜKETİM"
+    },
+    "MERAM": {
+      "reaktif": "REAKTİF TÜKETİM"
+    },
+    "Sakarya EDAŞ": {
+      "reaktif": "Reaktif Bedel (TL)"
+    },
+    "SAKARYA EDAŞ": {
+      "reaktif": "Reaktif Bedel (TL)"
+    }
+  },
+  "FIELD_SYNONYMS": {
+    "etso": [
+      "etsokodu",
+      "sayacid",
+      "sayacno",
+      "duykodu",
+      "pmumid",
+      "tesisatno",
+      "tesisatnumarasi",
+      "id",
+      "pmumcd"
+    ],
+    "musteri": [
+      "musteri",
+      "musteriadi",
+      "muhatapadi",
+      "aboneadi",
+      "unvan",
+      "firmadi",
+      "kisiadi",
+      "adsoyad",
+      "isim"
+    ],
+    "tarife": [
+      "trfnominaldrgr",
+      "trfnominal",
+      "nominaldrgr",
+      "tarifegrubu",
+      "abonetarifetipi",
+      "musterigrubu",
+      "tarife",
+      "tarifetipi"
+    ],
+    "ag_og": [
+      "agog",
+      "tarifetipi",
+      "gerilimtipi",
+      "ag/og",
+      "faturaagogadi"
+    ],
+    "terim": [
+      "terim",
+      "terimtipi",
+      "faturaterim"
+    ],
+    "güç_kw": [
+      "guckw",
+      "sozlesmegucu",
+      "baglantigucu",
+      "gucu"
+    ],
+    "kurulu_güç": [
+      "kuruluguc",
+      "kurulugucu"
+    ],
+    "aktif_enerji": [
+      "aktifenerjituketimkwh",
+      "toplamt1t2t3tuketim",
+      "dagitimmiktari",
+      "aktifenerji",
+      "toplamtuketim",
+      "t0tuketim",
+      "toplamkwh"
+    ],
+    "trafo_kaybı": [
+      "trafokaybi",
+      "trafokaybituketim",
+      "t0trafokaybi",
+      "trafokaybit0",
+      "trafokaybikwh",
+      "aktikkayip"
+    ],
+    "dagitim_bedeli": [
+      "dagitimbedelitl",
+      "dagitimbedeli",
+      "dagitimbdltl"
+    ],
+    "güç_bedeli": [
+      "gucbedelitl",
+      "gucbedeli"
+    ],
+    "güç_aşım": [
+      "gucasimbedelitl",
+      "gucasimbedeli",
+      "gucasimbdltl"
+    ],
+    "reaktif": [
+      "reaktifbedelitl",
+      "reaktifbedeli",
+      "reaktiftuketim",
+      "ribedeli",
+      "rcbedeli",
+      "reaktifbedel",
+      "reaktifinduktifkapasitiftl"
+    ],
+    "reaktif2": [
+      "reaktifbedelitl2",
+      "rcbedeli"
+    ],
+    "reaktif_tenzil": [
+      "reaktifbedeltenziltl",
+      "tenzilrcbedeli",
+      "ilkreaktifiadetutar"
+    ],
+    "reaktif_tenzil2": [
+      "reaktifbedeltenziltl2",
+      "tenzilribedeli"
+    ]
+  }
+}
