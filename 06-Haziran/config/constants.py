@@ -18,8 +18,8 @@ STANDARD_COLUMNS = [
     'Dağıtım Bölgesi', 'ETSO Kodu', 'Müşteri', 'Tarife Grubu', 'AG OG',
     'Terim', 'Güç (kW)', 'Kurulu Güç', 'Aktif Enerji Tüketim (kWh)',
     'Dağıtım Bedeli (TL)', 'Güç Bedeli (TL)', 'Güç Aşım Bedeli (TL)',
-    'Reaktif Bedel (TL)', 'İlk Reaktif Bedeli (TL)', 'KDV Matrahı (TL)',
-    'KDV', 'Toplam (TL)', 'Sayax\'a Atılacak Tarife'
+    'Reaktif Bedel (TL)', 'KDV Matrahı (TL)', 'KDV', 'Toplam (TL)',
+    'İlk Reaktif Bedeli (TL)', 'Sayax\'a Atılacak Tarife'
 ]
 
 # Mapping 7 alanları yalnız ilgili mapping şeması aktifken kayıtlara/çıktıya eklenir.

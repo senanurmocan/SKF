@@ -172,6 +172,7 @@ def parse_mapping_file(file_path):
             'AG OG': {},
             'TERİM': {},
         },
+        'sayax_tariff_rules': [],
         'correction_duplicates': [],
         'mapping_warnings': [],
         'features': {},
@@ -382,6 +383,61 @@ def parse_mapping_file(file_path):
                     continue
 
                 lookup[source_value] = target_value
+
+        # Düzeltme sayfasındaki I:L bloğu, aynı kaydın Tarife/AG-OG/Terim
+        # üçlüsünü Sayax'a gönderilecek tek metne dönüştürür.
+        sayax_headers = [
+            _mapping_text(value).casefold() if _mapping_text(value) else None
+            for value in df_corrections.iloc[1].tolist()
+        ] if len(df_corrections) > 1 else []
+        expected_sayax_headers = [
+            'tarife grubu', 'ag og', 'terim', 'olması gereken'
+        ]
+        sayax_start = next(
+            (
+                start
+                for start in range(max(0, len(sayax_headers) - 3))
+                if sayax_headers[start:start + 4] == expected_sayax_headers
+            ),
+            None,
+        )
+        if sayax_start is not None:
+            sayax_rules_by_key = {}
+            for row_idx in range(2, len(df_corrections)):
+                values = [
+                    _mapping_text(df_corrections.iloc[row_idx, sayax_start + offset])
+                    for offset in range(4)
+                ]
+                if not any(values):
+                    continue
+                if any(value is None for value in values):
+                    mapping['mapping_warnings'].append(
+                        f"Sayax Düzeltme satırı eksik (Excel satırı {row_idx + 1})"
+                    )
+                    continue
+
+                rule_key = tuple(
+                    re.sub(r'\s+', ' ', value).strip().casefold()
+                    for value in values[:3]
+                )
+                rule = {
+                    'tarife': values[0],
+                    'ag_og': values[1],
+                    'terim': values[2],
+                    'target': values[3],
+                    'excel_row': row_idx + 1,
+                }
+                existing = sayax_rules_by_key.get(rule_key)
+                if existing:
+                    if existing['target'] != rule['target']:
+                        mapping['mapping_warnings'].append(
+                            "Çelişkili Sayax eşlemesi: "
+                            f"{values[0]} / {values[1]} / {values[2]}"
+                        )
+                    continue
+                sayax_rules_by_key[rule_key] = rule
+
+            mapping['sayax_tariff_rules'] = list(sayax_rules_by_key.values())
 
     # Düzeltme sayfasından Dağıtım Adı normalizasyon tablosunu oku (G/H sütunları).
     mapping['distribution_names'] = _parse_distribution_name_mapping(df_corrections)

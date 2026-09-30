@@ -40,7 +40,7 @@ Mapping ``new_mapping_parser.parse_mapping_file`` ile okunur.
    dolu bölge satırlarından, dosya sırası korunarak oluşur. Üretim referansında
    21 EDAŞ bölgesi vardır.
 2. Not sayfası önceliği: Notlar 7, 6, 5, 4, 3, 2, 1, Notlar.
-3. ``Düzeltme`` varsa üç lookup bloğu okunur; yoksa lookup'lar boş kalır.
+3. ``Düzeltme`` varsa üç alan lookup'u ve varsa I:L Sayax tarife tablosu okunur.
 4. Ana 16 kaynak alanı: ETSO, Müşteri, Tarife, AG/OG, Terim, Güç, Kurulu Güç,
    Aktif Enerji, Trafo Kaybı, Dağıtım Bedeli, Güç Bedeli, Güç Aşım Bedeli,
    iki reaktif ve iki reaktif-tenzil alanıdır.
@@ -52,7 +52,7 @@ Mapping ``new_mapping_parser.parse_mapping_file`` ile okunur.
 7. Şema özellikleri ``notlar_7``, ``corrections`` ve
    ``extended_financial_fields`` bayraklarıyla taşınır.
 8. Mapping 6 gibi eski bir şema genişletilmiş alan taşımıyorsa eski kayıt
-   anahtarları ve 17 sütunlu Excel aynen korunur.
+   anahtarları ve 18 sütunlu Excel aynen korunur.
 9. ``load_mapping`` tarihsel eski fonksiyondur; üretim akışı
    ``load_mapping_new`` üzerinden parserı kullanır.
 
@@ -91,6 +91,11 @@ harf, boşluk/alt çizgi ve özel karakter temizliği uygular. Önemli istisnala
 AKEDAŞ ETSO ``Id`` ve müşteri kapalı; Yeşilırmak'ın ETSO/müşteri/güç/reaktif
 başlıkları; Toroslar AG/OG ``Gerilim Seviyesi``; Meram ve Sakarya reaktif
 başlıkları.
+
+Sütun/başlık denetimi veri çıkarma sırasını değiştirmez. Çamlıbel, Sakarya ve
+Kayseri için kabul edilen Haziran 2026 başlık düzeni
+``config/source_header_layouts.json`` içinde tutulur; mevcut düzen korunuyorsa
+uyarı üretilmez, başlık satırı değişirse kaynak formatı uyarısı verilir.
 
 ETSO, BÖLGE VE SAYI NORMALİZASYONU
 ---------------------------------
@@ -140,7 +145,8 @@ MAPPING 7 YENİ İŞ KURALLARI
    tanımlı olanların tamamı ham satırda ve ardından ETSO+bölge grubunda
    toplanır. Nihai sözleşmedeki bilinçli yazım tam olarak
    ``Standart Dışı Tutar (TL)`` şeklindedir.
-4. **Düzeltme:** A:B Tarife Grubu, C:D AG OG, E:F TERİM lookup bloklarıdır.
+4. **Düzeltme:** A:B Tarife Grubu, C:D AG OG, E:F TERİM lookup bloklarıdır;
+   I:L bloğu bu üç alanın birleşimini Sayax tarifesine çevirir.
    Eşleşme Unicode NFKC + boşluk sadeleştirme + casefold ile yapılır. Yalnız
    lookup'ta bulunan değer değişir; bulunmayan mevcut sonucu aynen korur.
    Düzeltme, ETSO agregasyonu ve bütün legacy bölgesel post-process
@@ -200,18 +206,19 @@ Filtre sonrası sıralı gruplamada:
 
 EXCEL ÇIKTI SÖZLEŞMESİ
 ----------------------
-Standart 17 sütun: Dağıtım Bölgesi, ETSO Kodu, Müşteri, Tarife Grubu, AG OG,
+Standart 18 sütun: Dağıtım Bölgesi, ETSO Kodu, Müşteri, Tarife Grubu, AG OG,
 Terim, Güç, Kurulu Güç, Aktif Enerji, Dağıtım Bedeli, Güç Bedeli, Güç Aşım,
-Reaktif, İlk Reaktif, KDV, Toplam, Sayax'a Atılacak Tarife.
+Reaktif, KDV Matrahı, KDV, Toplam, İlk Reaktif, Sayax'a Atılacak Tarife.
 
-Mapping 7 kaydı varsa R=``Standart Dışı Tutar (TL)`` ve son
-S=``Tazminat Bedeli`` eklenir. Formüller her veri satırında aynen::
+Mapping 7 kaydı varsa S=``Standart Dışı Tutar (TL)`` ve son
+T=``Tazminat Bedeli`` eklenir. Formüller her veri satırında aynen::
 
-    O = (J + K + L + M) * 0.2
-    P = SUM(J:M) + O
+    N = J + K + L + M
+    O = N * 0.2
+    P = N + O + Q
 
-Yeni R/S alanları mevcut KDV/Toplam formüllerine bilinçli olarak dahil
-edilmez. Q boş bırakılır. Sayfa adı ``Çıkarılan Veriler``; ETSO biçimi ``0``;
+İlk Reaktif Q sütununda, Sayax tarife R sütunundadır. S/T alanları KDV/Toplam
+formüllerine dahil edilmez. Sayfa adı ``Çıkarılan Veriler``; ETSO biçimi ``0``;
 sayısal alanlar mevcut muhasebe formatındadır. Kaydetmeden hemen önce her
 sütun maksimum string uzunluğu + 2 genişliğe getirilir. PermissionError'da
 ``_Guncel.xlsx`` alternatifi yazılır.
@@ -230,7 +237,8 @@ Varsayılan dönüş ``list[dict]``; ``return_stats=True`` dönüşü
 ``akdeniz_filtered`` (tarihsel; normalde 0), ``absurd_filtered``,
 ``merged_duplicates``, ``discovered_files``, ``processed_files``,
 ``file_errors``, ``per_region_records``, ``notes_sheet``,
-``mapping_features``, ``mapping_warnings``, ``correction_duplicates``,
+``mapping_features``, ``mapping_warnings``, ``source_header_warnings``,
+``correction_duplicates``,
 ``correction_counts``, ``correction_total``, ``correction_examples``,
 ``standart_disi_total`` ve ``tazminat_total``.
 
@@ -265,7 +273,7 @@ Kaynak veri değişmediği sürece beklenen golden ölçüler:
 Şunlar regresyonsuz değiştirilmemelidir: negatiflerin korunması; ETSO+bölge
 grubu; SUM/MAX/TEXT ayrımı; Çamlıbel AV'nin yalnız Mapping 7'de olması; dört
 bölgenin base-only reaktif kuralı; post-process'in Düzeltme'den önce olması;
-17/19 kolon koşulu; O/P formülleri; ``Standar`` yazımı ve maskesiz Excel.
+18/20 kolon koşulu; N/O/P formülleri; ``Standar`` yazımı ve maskesiz Excel.
 
 ``apply_note_rules`` bazı tarihsel metadata bayrakları üretir; gerçek çalışma
 davranışının otoritesi yalnız bayrak adları değil ``filter_extracted_data``,
@@ -286,7 +294,18 @@ from html.parser import HTMLParser
 
 # Add parent directory to path for importing new_mapping_parser
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from new_mapping_parser import parse_mapping_file, apply_note_rules, excel_column_letter_to_index, extract_file_filter
+from new_mapping_parser import (
+    parse_mapping_file,
+    apply_note_rules,
+    excel_column_letter_to_index,
+    index_to_excel_column,
+    extract_file_filter,
+)
+from core.source_header_validator import (
+    find_effective_header_row,
+    is_known_source_header_layout,
+    known_layout_change_warning,
+)
 
 # ── Modüler yapı importları ──────────────────────────────────────────────
 # Aşağıdaki modüller, bu monolitik dosyadaki fonksiyonların bağımsız
@@ -455,8 +474,8 @@ STANDARD_COLUMNS = [
     'Dağıtım Bölgesi', 'ETSO Kodu', 'Müşteri', 'Tarife Grubu', 'AG OG',
     'Terim', 'Güç (kW)', 'Kurulu Güç', 'Aktif Enerji Tüketim (kWh)',
     'Dağıtım Bedeli (TL)', 'Güç Bedeli (TL)', 'Güç Aşım Bedeli (TL)',
-    'Reaktif Bedel (TL)', 'İlk Reaktif Bedeli (TL)', 'KDV Matrahı (TL)',
-    'KDV', 'Toplam (TL)', 'Sayax\'a Atılacak Tarife'
+    'Reaktif Bedel (TL)', 'KDV Matrahı (TL)', 'KDV', 'Toplam (TL)',
+    'İlk Reaktif Bedeli (TL)', 'Sayax\'a Atılacak Tarife'
 ]
 
 # Mapping 7 alanları yalnız ilgili mapping şeması aktifken kayıtlara/çıktıya eklenir.
@@ -550,7 +569,34 @@ def parse_html_file(filepath):
         return {'type': 'error', 'error': str(e)}
 
 
-def read_xml_content(file_info, region_mapping, region_name=None):
+def _xml_row_values(row, namespace):
+    """Excel XML satırındaki ss:Index boşluklarını koruyarak hücreleri aç."""
+    values = []
+    next_column = 1
+    index_attribute = '{urn:schemas-microsoft-com:office:spreadsheet}Index'
+
+    for cell in row.findall('ss:Cell', namespace):
+        explicit_index = cell.get(index_attribute)
+        if explicit_index:
+            target_column = int(explicit_index)
+            while next_column < target_column:
+                values.append(None)
+                next_column += 1
+
+        data_elem = cell.find('ss:Data', namespace)
+        values.append(data_elem.text if data_elem is not None else None)
+        next_column += 1
+
+    return values
+
+
+def read_xml_content(
+    file_info,
+    region_mapping,
+    region_name=None,
+    source_name=None,
+    warning_collector=None,
+):
     """XML dosyasından veri çıkar (Excel 2003 XML formatı)"""
     data_rows = []
 
@@ -581,26 +627,14 @@ def read_xml_content(file_info, region_mapping, region_name=None):
 
         # Önce rows[0] kontrol et
         headers_row = rows[0]
-        headers = []
-        for cell in headers_row.findall('ss:Cell', ns):
-            data_elem = cell.find('ss:Data', ns)
-            if data_elem is not None:
-                headers.append(data_elem.text)
-            else:
-                headers.append(None)
+        headers = _xml_row_values(headers_row, ns)
 
         # Eğer headers tek bir başlık banner satırı ise (<=2 dolu hücre), gerçek header satırını ara
         row0_vals = [h for h in headers if h is not None and str(h).strip()]
         if len(row0_vals) <= 2:
             # Tüm satırları tara, ilk gerçek header satırını (en az 3 sütunlu) bul
             for i, row in enumerate(rows):
-                row_headers = []
-                for cell in row.findall('ss:Cell', ns):
-                    data_elem = cell.find('ss:Data', ns)
-                    if data_elem is not None and data_elem.text:
-                        row_headers.append(data_elem.text)
-                    else:
-                        row_headers.append(None)
+                row_headers = _xml_row_values(row, ns)
 
                 # En az 3 header değeri varsa, bu gerçek header satırı
                 if len([h for h in row_headers if h is not None and str(h).strip()]) > 2:
@@ -618,8 +652,26 @@ def read_xml_content(file_info, region_mapping, region_name=None):
         etso_idx = indices['etso']
         # Notlar 12 #3: Standart dışı format kontrolü
         if etso_idx < 0:
+            if warning_collector is not None and is_known_source_header_layout(region_name):
+                report_source_header_mismatches(
+                    headers,
+                    region_mapping,
+                    region_name,
+                    f"{source_name or 'Kaynak'} / {worksheet_name or 'Sayfa'}",
+                    warning_collector,
+                    header_row_number=header_row_index + 1,
+                )
             print(f"  [UYARI] {region_name}: ETSO sütunu bulunamadı – standart dışı format, atlanıyor")
             continue
+        if warning_collector is not None:
+            report_source_header_mismatches(
+                headers,
+                region_mapping,
+                region_name,
+                f"{source_name or 'Kaynak'} / {worksheet_name or 'Sayfa'}",
+                warning_collector,
+                header_row_number=header_row_index + 1,
+            )
         musteri_idx = indices['musteri']
         tarife_idx = indices['tarife']
         ag_og_idx = indices['ag_og']
@@ -641,14 +693,7 @@ def read_xml_content(file_info, region_mapping, region_name=None):
 
         # Veri satırlarını işle (header_row_index'den sonraki satırlar)
         for row in rows[header_row_index + 1:]:
-            cells = row.findall('ss:Cell', ns)
-            cell_values = []
-            for cell in cells:
-                data_elem = cell.find('ss:Data', ns)
-                if data_elem is not None:
-                    cell_values.append(data_elem.text)
-                else:
-                    cell_values.append(None)
+            cell_values = _xml_row_values(row, ns)
 
             if not cell_values or all(v is None for v in cell_values):
                 continue
@@ -691,7 +736,13 @@ def read_xml_content(file_info, region_mapping, region_name=None):
     return data_rows
 
 
-def read_html_content(file_info, region_mapping, region_name=None):
+def read_html_content(
+    file_info,
+    region_mapping,
+    region_name=None,
+    source_name=None,
+    warning_collector=None,
+):
     """HTML dosyasından veri çıkar (Excel HTML formatı)"""
     data_rows = []
 
@@ -735,8 +786,26 @@ def read_html_content(file_info, region_mapping, region_name=None):
     etso_idx = indices['etso']
     # Notlar 12 #3: Standart dışı format kontrolü
     if etso_idx < 0:
+        if warning_collector is not None and is_known_source_header_layout(region_name):
+            report_source_header_mismatches(
+                headers,
+                region_mapping,
+                region_name,
+                source_name or 'HTML kaynağı',
+                warning_collector,
+                header_row_number=header_row_index + 1,
+            )
         print(f"  [UYARI] {region_name}: ETSO sütunu bulunamadı – standart dışı format, atlanıyor")
         return []
+    if warning_collector is not None:
+        report_source_header_mismatches(
+            headers,
+            region_mapping,
+            region_name,
+            source_name or 'HTML kaynağı',
+            warning_collector,
+            header_row_number=header_row_index + 1,
+        )
     musteri_idx = indices['musteri']
     tarife_idx = indices['tarife']
     ag_og_idx = indices['ag_og']
@@ -861,6 +930,90 @@ def normalize_header(header):
     # Parantezleri ve özel karakterleri temizle
     header = re.sub(r'[^\w]', '', header)
     return header
+
+
+def collect_source_header_mismatches(headers, region_mapping, region_name, source_name):
+    """Mapping'deki sütun harfi ile gerçek kaynak başlığını karşılaştır."""
+    fields = [
+        'etso', 'musteri', 'tarife', 'ag_og', 'terim', 'güç_kw', 'kurulu_güç',
+        'aktif_enerji', 'trafo_kaybı', 'dagitim_bedeli', 'güç_bedeli',
+        'güç_aşım', 'reaktif', 'reaktif2', 'reaktif_tenzil', 'reaktif_tenzil2',
+        *region_mapping.get('tazminat_fields', []),
+        *region_mapping.get('standart_disi_fields', []),
+    ]
+    mismatches = []
+
+    for field in fields:
+        expected_header = region_mapping.get(field)
+        expected_normalized = normalize_header(expected_header)
+        column_index = region_mapping.get(f'{field}_index', -1)
+        if not expected_normalized or not isinstance(column_index, int) or column_index < 0:
+            continue
+
+        actual_header = headers[column_index] if column_index < len(headers) else None
+        if normalize_header(actual_header) == expected_normalized:
+            continue
+
+        matching_columns = [
+            index_to_excel_column(index)
+            for index, header in enumerate(headers)
+            if normalize_header(header) == expected_normalized
+        ]
+        mismatches.append({
+            'Dağıtım Bölgesi': region_name or region_mapping.get('region_name', ''),
+            'Kaynak': source_name,
+            'Alan': field,
+            'Eşlenen sütun': index_to_excel_column(column_index),
+            'Beklenen başlık': str(expected_header),
+            'Sütundaki başlık': str(actual_header) if actual_header is not None else '(boş)',
+            'Başlığın bulunduğu sütun': ', '.join(matching_columns) if matching_columns else '(bulunamadı)',
+        })
+
+    return mismatches
+
+
+def report_source_header_mismatches(
+    headers,
+    region_mapping,
+    region_name,
+    source_name,
+    warning_collector,
+    header_row_number=None,
+):
+    """Uyuşmazlıkları hem konsol çıktısına hem işlem istatistiklerine ekle."""
+    if is_known_source_header_layout(region_name):
+        format_warning = known_layout_change_warning(
+            headers,
+            region_name,
+            source_name,
+            header_row_number=header_row_number,
+        )
+        if format_warning:
+            warning_collector.append(format_warning)
+            print(
+                "  [UYARI] Kaynak dosya biçimi değişmiş olabilir: "
+                f"{region_name} / {source_name}; "
+                f"{format_warning['Beklenen başlık']} ile eşleşmiyor."
+            )
+        return
+
+    mismatches = collect_source_header_mismatches(
+        headers, region_mapping, region_name, source_name
+    )
+    for mismatch in mismatches:
+        found_at = mismatch['Başlığın bulunduğu sütun']
+        found_note = (
+            f"; beklenen başlık {found_at} sütununda bulundu"
+            if found_at != '(bulunamadı)' else ''
+        )
+        print(
+            "  [UYARI] Kaynak sütun-başlık uyuşmazlığı: "
+            f"{mismatch['Dağıtım Bölgesi']} / {mismatch['Kaynak']} / "
+            f"{mismatch['Alan']}: {mismatch['Eşlenen sütun']} sütununda "
+            f"'{mismatch['Beklenen başlık']}' bekleniyor, "
+            f"'{mismatch['Sütundaki başlık']}' bulundu{found_note}."
+        )
+    warning_collector.extend(mismatches)
 
 
 # Special header mappings for regions where expected header differs from actual
@@ -1056,7 +1209,7 @@ def resolve_column_indices(headers, region_mapping):
             if norm_target and norm_target in normalized_headers:
                 found_idx = normalized_headers.index(norm_target)
 
-        # Prioritize explicitly assigned column index from mapping if header name didn't match directly
+        # Keep established extraction behavior: use the mapped column before synonyms.
         if found_idx == -1 and 0 <= fixed_idx < len(headers):
             found_idx = fixed_idx
 
@@ -1222,7 +1375,14 @@ def discover_supported_files(region_path):
     return supported_files
 
 
-def read_excel_content(file_info, region_mapping, region_name=None, alt_region_mapping=None):
+def read_excel_content(
+    file_info,
+    region_mapping,
+    region_name=None,
+    alt_region_mapping=None,
+    source_name=None,
+    warning_collector=None,
+):
     """Excel'den ana 16 alanı ve koşullu Mapping 7 alanlarını çıkar.
     
     Çift formatlı bölgeler (ör: Dicle EDAŞ) için alt_region_mapping parametresi
@@ -1240,6 +1400,11 @@ def read_excel_content(file_info, region_mapping, region_name=None, alt_region_m
                 continue
 
             headers = rows[0]
+            validation_headers = headers
+            validation_header_row_number = 1
+            if is_known_source_header_layout(region_name):
+                validation_row_index, validation_headers = find_effective_header_row(rows)
+                validation_header_row_number = validation_row_index + 1
 
             # Sütun indekslerini dinamik resolver ile çözümler
             active_mapping = region_mapping
@@ -1264,9 +1429,27 @@ def read_excel_content(file_info, region_mapping, region_name=None, alt_region_m
             # Tahmin etme, okunamadığını belirt.
             etso_idx = indices['etso']
             if etso_idx < 0:
+                if warning_collector is not None and is_known_source_header_layout(region_name):
+                    report_source_header_mismatches(
+                        validation_headers,
+                        active_mapping,
+                        region_name,
+                        f"{source_name or 'Excel kaynağı'} / {sheet_name}",
+                        warning_collector,
+                        header_row_number=validation_header_row_number,
+                    )
                 print(f"  [UYARI] {region_name} / {sheet_name}: ETSO sütunu bulunamadı – "
                       f"standart dışı format, atlanıyor")
                 continue
+            if warning_collector is not None:
+                report_source_header_mismatches(
+                    validation_headers,
+                    active_mapping,
+                    region_name,
+                    f"{source_name or 'Excel kaynağı'} / {sheet_name}",
+                    warning_collector,
+                    header_row_number=validation_header_row_number,
+                )
             musteri_idx = indices['musteri']
             tarife_idx = indices['tarife']
             ag_og_idx = indices['ag_og']
@@ -1360,9 +1543,27 @@ def read_excel_content(file_info, region_mapping, region_name=None, alt_region_m
             etso_idx = indices['etso']
             # Notlar 12 #3: Standart dışı format kontrolü
             if etso_idx < 0:
+                if warning_collector is not None and is_known_source_header_layout(region_name):
+                    report_source_header_mismatches(
+                        headers,
+                        region_mapping,
+                        region_name,
+                        f"{source_name or 'Excel kaynağı'} / {sheet.name}",
+                        warning_collector,
+                        header_row_number=header_row_idx + 1,
+                    )
                 print(f"  [UYARI] {region_name} / {sheet.name}: ETSO sütunu bulunamadı – "
                       f"standart dışı format, atlanıyor")
                 continue
+            if warning_collector is not None:
+                report_source_header_mismatches(
+                    headers,
+                    region_mapping,
+                    region_name,
+                    f"{source_name or 'Excel kaynağı'} / {sheet.name}",
+                    warning_collector,
+                    header_row_number=header_row_idx + 1,
+                )
             musteri_idx = indices['musteri']
             tarife_idx = indices['tarife']
             ag_og_idx = indices['ag_og']
@@ -1509,6 +1710,7 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
     total_discovered_files = 0
     total_processed_files = 0
     file_errors = []
+    source_header_warnings = []
     per_region_records = {}
     correction_counts = {'Tarife Grubu': 0, 'AG OG': 0, 'TERİM': 0}
     correction_example_counts = {'Tarife Grubu': 0, 'AG OG': 0, 'TERİM': 0}
@@ -1524,6 +1726,15 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
                     'target': target_value,
                 }
         normalized_corrections[output_field] = normalized_lookup
+
+    normalized_sayax_tariffs = {}
+    for rule in mapping.get('sayax_tariff_rules', []):
+        rule_key = tuple(
+            normalize_correction_lookup(rule.get(field))
+            for field in ('tarife', 'ag_og', 'terim')
+        )
+        if all(rule_key):
+            normalized_sayax_tariffs[rule_key] = rule.get('target', '')
 
     print("=== VERİ ÇIKARILIYOR ===\n")
 
@@ -1617,7 +1828,14 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
             if file_format == 'xlsx':
                 file_info = parse_excel_file(fpath)
                 if file_info and file_info['type'] == 'xlsx':
-                    data = read_excel_content(file_info, region_mapping, region_name=region, alt_region_mapping=alt_region_mapping)
+                    data = read_excel_content(
+                        file_info,
+                        region_mapping,
+                        region_name=region,
+                        alt_region_mapping=alt_region_mapping,
+                        source_name=fname,
+                        warning_collector=source_header_warnings,
+                    )
                     region_all_data.extend(data)
                     processed_count += len(data)
                     file_was_processed = True
@@ -1628,7 +1846,13 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
                     # .xls uzantılı ama aslında HTML/XML formatında, parse_html_file ile dene
                     file_info = parse_html_file(fpath)
                     if file_info and file_info['type'] == 'html':
-                        data = read_html_content(file_info, region_mapping, region_name=region)
+                        data = read_html_content(
+                            file_info,
+                            region_mapping,
+                            region_name=region,
+                            source_name=fname,
+                            warning_collector=source_header_warnings,
+                        )
                         region_all_data.extend(data)
                         processed_count += len(data)
                         file_was_processed = True
@@ -1637,13 +1861,26 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
                         # XML formatında olabilir, parse_xml_file ile dene
                         file_info = parse_xml_file(fpath)
                         if file_info and file_info['type'] == 'xml':
-                            data = read_xml_content(file_info, region_mapping, region_name=region)
+                            data = read_xml_content(
+                                file_info,
+                                region_mapping,
+                                region_name=region,
+                                source_name=fname,
+                                warning_collector=source_header_warnings,
+                            )
                             region_all_data.extend(data)
                             processed_count += len(data)
                             file_was_processed = True
                             print(f"  {fname}: XML formatı (xls uzantılı) - {len(data)} satır çıkarıldı")
                 elif file_info and file_info['type'] == 'xls':
-                    data = read_excel_content(file_info, region_mapping, region_name=region, alt_region_mapping=alt_region_mapping)
+                    data = read_excel_content(
+                        file_info,
+                        region_mapping,
+                        region_name=region,
+                        alt_region_mapping=alt_region_mapping,
+                        source_name=fname,
+                        warning_collector=source_header_warnings,
+                    )
                     region_all_data.extend(data)
                     processed_count += len(data)
                     file_was_processed = True
@@ -1654,7 +1891,13 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
             elif file_format == 'xml':
                 file_info = parse_xml_file(fpath)
                 if file_info and file_info['type'] == 'xml':
-                    data = read_xml_content(file_info, region_mapping, region_name=region)
+                    data = read_xml_content(
+                        file_info,
+                        region_mapping,
+                        region_name=region,
+                        source_name=fname,
+                        warning_collector=source_header_warnings,
+                    )
                     region_all_data.extend(data)
                     processed_count += len(data)
                     file_was_processed = True
@@ -1663,7 +1906,13 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
             elif file_format == 'html':
                 file_info = parse_html_file(fpath)
                 if file_info and file_info['type'] == 'html':
-                    data = read_html_content(file_info, region_mapping, region_name=region)
+                    data = read_html_content(
+                        file_info,
+                        region_mapping,
+                        region_name=region,
+                        source_name=fname,
+                        warning_collector=source_header_warnings,
+                    )
                     region_all_data.extend(data)
                     processed_count += len(data)
                     file_was_processed = True
@@ -1843,6 +2092,12 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
             if 'Çift' in final_terim:
                 rec['AG OG'] = 'OG'
 
+        sayax_key = tuple(
+            normalize_correction_lookup(rec.get(field))
+            for field in ('Tarife Grubu', 'AG OG', 'TERİM')
+        )
+        rec["Sayax'a Atılacak Tarife"] = normalized_sayax_tariffs.get(sayax_key, '')
+
         return rec
 
     for (etso_norm, region), records in aggregation_groups.items():
@@ -1976,6 +2231,7 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         'notes_sheet': mapping.get('notes_sheet'),
         'mapping_features': mapping.get('features', {}).copy(),
         'mapping_warnings': list(mapping.get('mapping_warnings', [])),
+        'source_header_warnings': source_header_warnings,
         'correction_duplicates': list(mapping.get('correction_duplicates', [])),
         'correction_counts': correction_counts.copy(),
         'correction_total': sum(correction_counts.values()),
@@ -2218,11 +2474,11 @@ def save_to_excel(data, filepath):
             row.get('Güç Bedeli(TL)', ''),
             row.get('Güç Aşım Bedeli (TL)', ''),
             row.get('Reaktif Bedel (TL)', ''),
-            row.get('İlk Reaktif', ''),
-            f"=J{idx}+K{idx}+L{idx}+M{idx}",           # O: KDV Matrahı (TL)
-            f"=O{idx}*0.2",                              # P: KDV
-            f"=O{idx}+N{idx}+P{idx}",                    # Q: Toplam (TL)
-            None                                          # R: Sayax'a Atılacak Tarife
+            f"=J{idx}+K{idx}+L{idx}+M{idx}",           # N: KDV Matrahı (TL)
+            f"=N{idx}*0.2",                              # O: KDV
+            f"=N{idx}+O{idx}+Q{idx}",                    # P: Toplam (TL)
+            row.get('İlk Reaktif', ''),                  # Q: İlk Reaktif Bedeli (TL)
+            row.get("Sayax'a Atılacak Tarife", '')       # R: Sayax'a Atılacak Tarife
         ]
         if extended_output_enabled:
             output_row.extend([

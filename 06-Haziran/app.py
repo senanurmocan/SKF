@@ -116,6 +116,7 @@ RAW_DATA_COLUMNS = [
     "Güç Aşım Bedeli (TL)",
     "Reaktif Bedel (TL)",
     "İlk Reaktif",
+    "Sayax'a Atılacak Tarife",
 ]
 
 OPTIONAL_RAW_DATA_COLUMNS = [
@@ -761,9 +762,13 @@ def build_processing_logs(
     ]
     if stats.get("file_errors"):
         logs.append(f"Dosya okuma hatası: {format_turkish_integer(len(stats['file_errors']))}")
-    if stats.get("mapping_warnings"):
+    mapping_warning_count = (
+        len(stats.get("mapping_warnings", []))
+        + len(stats.get("source_header_warnings", []))
+    )
+    if mapping_warning_count:
         logs.append(
-            f"Mapping kalite uyarısı: {format_turkish_integer(len(stats['mapping_warnings']))}"
+            f"Mapping kalite uyarısı: {format_turkish_integer(mapping_warning_count)}"
         )
     if stats.get("mapping_features", {}).get("extended_financial_fields"):
         logs.extend([
@@ -990,6 +995,21 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
         f"Birleştirilen mükerrer kayıt: {format_turkish_integer(stats.get('merged_duplicates', 0))} | "
         f"Filtrelenen bozuk kayıt: {format_turkish_integer(stats.get('absurd_filtered', 0))}"
     )
+
+    source_header_warnings = stats.get("source_header_warnings", [])
+    if source_header_warnings:
+        st.warning(
+            f"{format_turkish_integer(len(source_header_warnings))} kaynak başlık uyuşmazlığı "
+            "veya format değişikliği bulundu. "
+            "Ayrıntıları kontrol edin."
+        )
+        with st.expander("⚠️ Kaynak başlık / format uyarıları", expanded=True):
+            st.dataframe(
+                pd.DataFrame(source_header_warnings),
+                width="stretch",
+                hide_index=True,
+                height=min(620, max(180, 38 * min(len(source_header_warnings), 16))),
+            )
 
     with st.expander("📋 İşlem Logları", expanded=False):
         for log_line in st.session_state.get("processing_logs", []):

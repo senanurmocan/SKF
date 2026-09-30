@@ -89,11 +89,11 @@ def save_to_excel(data, filepath):
             row.get('Güç Bedeli(TL)', ''),
             row.get('Güç Aşım Bedeli (TL)', ''),
             row.get('Reaktif Bedel (TL)', ''),
-            row.get('İlk Reaktif', ''),
-            f"=J{idx}+K{idx}+L{idx}+M{idx}",           # O: KDV Matrahı (TL)
-            f"=O{idx}*0.2",                              # P: KDV
-            f"=O{idx}+N{idx}+P{idx}",                    # Q: Toplam (TL)
-            None                                          # R: Sayax'a Atılacak Tarife
+            f"=J{idx}+K{idx}+L{idx}+M{idx}",           # N: KDV Matrahı (TL)
+            f"=N{idx}*0.2",                              # O: KDV
+            f"=N{idx}+O{idx}+Q{idx}",                    # P: Toplam (TL)
+            row.get('İlk Reaktif', ''),                  # Q: İlk Reaktif Bedeli (TL)
+            row.get("Sayax'a Atılacak Tarife", '')       # R: Sayax'a Atılacak Tarife
         ]
         if extended_output_enabled:
             output_row.extend([
