@@ -981,6 +981,7 @@ def report_source_header_mismatches(
     header_row_number=None,
 ):
     """Uyuşmazlıkları hem konsol çıktısına hem işlem istatistiklerine ekle."""
+    format_warning = None
     if is_known_source_header_layout(region_name):
         format_warning = known_layout_change_warning(
             headers,
@@ -988,31 +989,16 @@ def report_source_header_mismatches(
             source_name,
             header_row_number=header_row_number,
         )
-        if format_warning:
-            warning_collector.append(format_warning)
-            print(
-                "  [UYARI] Kaynak dosya biçimi değişmiş olabilir: "
-                f"{region_name} / {source_name}; "
-                f"{format_warning['Beklenen başlık']} ile eşleşmiyor."
-            )
-        return
+        if not format_warning:
+            return
 
     mismatches = collect_source_header_mismatches(
         headers, region_mapping, region_name, source_name
     )
-    for mismatch in mismatches:
-        found_at = mismatch['Başlığın bulunduğu sütun']
-        found_note = (
-            f"; beklenen başlık {found_at} sütununda bulundu"
-            if found_at != '(bulunamadı)' else ''
-        )
-        print(
-            "  [UYARI] Kaynak sütun-başlık uyuşmazlığı: "
-            f"{mismatch['Dağıtım Bölgesi']} / {mismatch['Kaynak']} / "
-            f"{mismatch['Alan']}: {mismatch['Eşlenen sütun']} sütununda "
-            f"'{mismatch['Beklenen başlık']}' bekleniyor, "
-            f"'{mismatch['Sütundaki başlık']}' bulundu{found_note}."
-        )
+    if not mismatches and format_warning:
+        warning_collector.append(format_warning)
+        return
+
     warning_collector.extend(mismatches)
 
 
@@ -2210,6 +2196,19 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         if normalize_region_name(region, to_format='reference') in normalized_processed_regions
     ]
     missing_regions = [region for region in regions if region not in successful_regions]
+
+    warning_details_by_company = {}
+    for warning in source_header_warnings:
+        company = warning.get('Dağıtım Bölgesi') or 'Bilinmeyen dağıtım şirketi'
+        company_details = warning_details_by_company.setdefault(company, set())
+        company_details.add((
+            warning.get('Eşlenen süt'),
+            warning.get('Beklenen başlık'),
+            warning.get('Sütundaki başlık'),
+            warning.get('Başlığın bulunduğu sütun'),
+        ))
+    for company, details in warning_details_by_company.items():
+        print(f"[UYARI] Format Farkı: {company} ({len(details)} farklı başlık farkı)")
 
     stats = {
         'expected_region_count': len(regions),

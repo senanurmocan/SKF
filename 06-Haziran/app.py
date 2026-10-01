@@ -892,6 +892,144 @@ def render_sidebar() -> tuple[str, str | None]:
     return root_folder, mapping_path
 
 
+_SOURCE_WARNING_OUTPUT_FIELDS = {
+    "etso": ("Etso Kodu",),
+    "musteri": ("Müşteri",),
+    "tarife": ("Tarife Grubu",),
+    "ag_og": ("AG OG",),
+    "terim": ("TERİM",),
+    "güç_kw": ("Güç kW",),
+    "kurulu_güç": ("KURULU GÜÇ",),
+    "aktif_enerji": ("Aktif Enerji Tüketim (kWh)",),
+    "trafo_kaybı": ("Aktif Enerji Tüketim (kWh)",),
+    "dagitim_bedeli": ("Dağıtım Bedeli(TL)",),
+    "güç_bedeli": ("Güç Bedeli(TL)",),
+    "güç_aşım": ("Güç Aşım Bedeli (TL)",),
+    "reaktif": ("Reaktif Bedel (TL)",),
+    "reaktif2": ("Reaktif Bedel (TL)",),
+    "reaktif_tenzil": ("Reaktif Bedel (TL)", "İlk Reaktif"),
+    "reaktif_tenzil2": ("Reaktif Bedel (TL)", "İlk Reaktif"),
+}
+
+_SOURCE_WARNING_FIELD_LABELS = {
+    "etso": "ETSO Kodu",
+    "musteri": "Müşteri",
+    "tarife": "Tarife Grubu",
+    "ag_og": "AG OG",
+    "terim": "TERİM",
+    "güç_kw": "Güç kW",
+    "kurulu_güç": "Kurulu Güç",
+    "aktif_enerji": "Aktif Enerji Tüketim (kWh)",
+    "trafo_kaybı": "Trafo Kaybı",
+    "dagitim_bedeli": "Dağıtım Bedeli (TL)",
+    "güç_bedeli": "Güç Bedeli (TL)",
+    "güç_aşım": "Güç Aşım Bedeli (TL)",
+    "reaktif": "Reaktif Bedel (TL)",
+    "reaktif2": "Reaktif Bedel (TL)",
+    "reaktif_tenzil": "İlk Reaktif / Tenzil",
+    "reaktif_tenzil2": "İlk Reaktif / Tenzil 2",
+}
+
+
+def _merged_warning_field_found(
+    merged_df: pd.DataFrame,
+    distribution_company: str,
+    source_field: str,
+) -> bool:
+    """Check whether a warned source field has a populated value after merging."""
+    if merged_df.empty or "Dağıtım Bölgesi" not in merged_df.columns:
+        return False
+
+    company_rows = merged_df.loc[
+        merged_df["Dağıtım Bölgesi"].fillna("").astype(str).str.casefold()
+        == str(distribution_company).casefold()
+    ]
+    if company_rows.empty:
+        return False
+
+    output_fields = _SOURCE_WARNING_OUTPUT_FIELDS.get(source_field)
+    if output_fields is None:
+        # Mapping-specific financial fields are consolidated into these totals.
+        output_fields = ("Tazminat Bedeli", "Standart Dışı Tutar (TL)")
+
+    for output_field in output_fields:
+        if output_field not in company_rows.columns:
+            continue
+        for value in company_rows[output_field].tolist():
+            if value is None or pd.isna(value):
+                continue
+            if isinstance(value, str):
+                value = value.strip()
+                if not value or value.casefold() in {"none", "null", "nan", "boş"}:
+                    continue
+            if is_numeric_text(value) and abs(safe_float(value)) <= 1e-12:
+                continue
+            return True
+    return False
+
+
+def build_format_warning_rows(
+    warnings: list[dict[str, Any]],
+    merged_df: pd.DataFrame,
+) -> list[dict[str, str]]:
+    """Collapse per-sheet header warnings into one summary row per company."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for warning in warnings:
+        company = str(warning.get("Dağıtım Bölgesi") or "Bilinmeyen dağıtım şirketi")
+        group = grouped.setdefault(
+            company,
+            {"expected": [], "current": [], "statuses": [], "seen": set()},
+        )
+
+        source_field = str(warning.get("Alan") or "")
+        expected_header = warning.get("Beklenen başlık")
+        expected_column = warning.get("Eşlenen süt")
+        current_header = warning.get("Sütundaki başlık")
+        if expected_header is not None:
+            expected = f"{expected_column} - {expected_header}" if expected_column else str(expected_header)
+            current = f"{expected_column} - {current_header or '(boş)'}" if expected_column else str(current_header or "(boş)")
+            found_at = warning.get("Başlığın bulunduğu sütun")
+            if found_at and found_at != "(bulunamadı)":
+                current += f" (olması gereken başlık {found_at} sütununda)"
+            field_label = _SOURCE_WARNING_FIELD_LABELS.get(
+                source_field,
+                str(expected_header),
+            )
+            is_found = _merged_warning_field_found(merged_df, company, source_field)
+        else:
+            # The saved layout is represented by a signature, so no individual
+            # expected column can be named for this fallback warning.
+            expected = f"Kayıtlı düzen: {warning.get('Beklenen başlık', 'başlık düzeni')}"
+            current = "Başlık düzeni değişmiş"
+            header_location = warning.get("Başlığın bulunduğu sütun")
+            if header_location:
+                current += f" ({header_location})"
+            field_label = "Başlık düzeni"
+            is_found = not merged_df.empty and bool(
+                (merged_df.get("Dağıtım Bölgesi", pd.Series(dtype=str)).fillna("").astype(str).str.casefold()
+                 == company.casefold()).any()
+            )
+
+        status = "Bulundu" if is_found else "Bulunamadı, Boş Bırakıldı"
+        details = (expected, current, f"{field_label}: {status}")
+        if details in group["seen"]:
+            continue
+        group["seen"].add(details)
+        group["expected"].append(expected)
+        group["current"].append(current)
+        group["statuses"].append(details[2])
+
+    return [
+        {
+            "Dağıtım Şirketi": company,
+            "Olması Gereken Sütun ve İsim": "\n".join(group["expected"]),
+            "Mevcut Sütun ve İsim": "\n".join(group["current"]),
+            "Birleştirilen Veride": "\n".join(group["statuses"]),
+        }
+        for company, group in grouped.items()
+    ]
+
+
 def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
     st.subheader("⚙️ Veri İşleme ve Kurumsal Rapor")
 
@@ -998,17 +1136,16 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
 
     source_header_warnings = stats.get("source_header_warnings", [])
     if source_header_warnings:
+        format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
         st.warning(
-            f"{format_turkish_integer(len(source_header_warnings))} kaynak başlık uyuşmazlığı "
-            "veya format değişikliği bulundu. "
-            "Ayrıntıları kontrol edin."
+            f"{format_turkish_integer(len(format_warning_rows))} dağıtım şirketinde format farkı bulundu."
         )
-        with st.expander("⚠️ Kaynak başlık / format uyarıları", expanded=True):
+        with st.expander("⚠️ Format Farkı", expanded=True):
             st.dataframe(
-                pd.DataFrame(source_header_warnings),
+                pd.DataFrame(format_warning_rows),
                 width="stretch",
                 hide_index=True,
-                height=min(620, max(180, 38 * min(len(source_header_warnings), 16))),
+                height=min(620, max(180, 58 * min(len(format_warning_rows), 10))),
             )
 
     with st.expander("📋 İşlem Logları", expanded=False):
