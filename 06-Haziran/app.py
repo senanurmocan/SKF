@@ -168,6 +168,12 @@ def inject_corporate_css() -> None:
         [data-testid="stAppViewContainer"] {
             background: linear-gradient(180deg, #FFFFFF 0%, #F7F9FC 100%);
         }
+        [data-testid="stMainBlockContainer"] {
+            max-width: none;
+            padding-top: 0.75rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
         [data-testid="stSidebar"] {
             background-color: #F5F7FA;
             border-right: 1px solid #D8DEE9;
@@ -849,7 +855,7 @@ def render_metric_card(container: Any, label: str, value: str) -> None:
     )
 
 
-def render_sidebar() -> tuple[str, str | None]:
+def render_sidebar() -> tuple[str, str | None, bool]:
     logo_path = BASE_DIR / "CK_Enerji_-_Yatay.png"
     if logo_path.exists():
         st.sidebar.image(str(logo_path), width="stretch")
@@ -875,6 +881,13 @@ def render_sidebar() -> tuple[str, str | None]:
     embedded_mapping_path = str(BASE_DIR / "SKF Başlıkları.xlsx")
     if not os.path.isfile(embedded_mapping_path):
         st.sidebar.error("⚠️ Sistem mapping dosyası bulunamadı: SKF Başlıkları.xlsx")
+    mapping_path = embedded_mapping_path if os.path.isfile(embedded_mapping_path) else None
+    run_button = st.sidebar.button(
+        "🚀 Verileri Birleştir ve Analiz Et",
+        type="primary",
+        width="stretch",
+        disabled=not (root_folder and os.path.isdir(root_folder) and mapping_path),
+    )
 
     candidate_count = count_candidate_region_folders(root_folder)
     st.sidebar.info(
@@ -889,8 +902,7 @@ def render_sidebar() -> tuple[str, str | None]:
     st.sidebar.divider()
     st.sidebar.toggle("🌙 Karanlık Mod", key="dark_mode")
 
-    mapping_path = embedded_mapping_path if os.path.isfile(embedded_mapping_path) else None
-    return root_folder, mapping_path
+    return root_folder, mapping_path, run_button
 
 
 _SOURCE_WARNING_OUTPUT_FIELDS = {
@@ -1045,7 +1057,11 @@ def render_format_warning_table(rows: list[dict[str, str]]) -> None:
     st.markdown(table_html, unsafe_allow_html=True)
 
 
-def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
+def render_analysis_panel(
+    root_folder: str,
+    mapping_path: str | None,
+    run_button: bool = False,
+) -> None:
     st.subheader("⚙️ Veri İşleme ve Kurumsal Rapor")
 
     valid_root = bool(root_folder and os.path.isdir(root_folder))
@@ -1066,13 +1082,6 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
         and st.session_state.get("analysis_signature") != current_signature
     ):
         clear_analysis_state()
-
-    run_button = st.button(
-        "🚀 Verileri Birleştir ve Analiz Et",
-        type="primary",
-        width="stretch",
-        disabled=not (valid_root and valid_mapping),
-    )
 
     if run_button and mapping_path:
         clear_analysis_state()
@@ -1194,7 +1203,6 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
     st.markdown(
         f"#### 🔍 Veri Önizleme - {format_turkish_integer(len(raw_df))} Kayıt"
     )
-    st.success("Verileriniz %100 yerelde işlenmektedir, ETSO kodları gizlidir.")
     display_df = format_dataframe_for_ui(raw_df)
     st.dataframe(
         display_df,
@@ -1218,9 +1226,9 @@ def main() -> None:
     inject_corporate_css()
     initialize_session_state()
 
-    root_folder, mapping_path = render_sidebar()
+    root_folder, mapping_path, run_button = render_sidebar()
 
-    header_left, header_right = st.columns([4, 1])
+    header_left, header_right = st.columns([4, 1], gap="small", vertical_alignment="top")
     with header_left:
         st.markdown('<div class="ck-title">⚡ CK Enerji EDAŞ Fatura Veri Portalı</div>', unsafe_allow_html=True)
         st.markdown(
@@ -1233,9 +1241,7 @@ def main() -> None:
         if logo_path.exists():
             st.image(str(logo_path), width="stretch")
 
-    st.success("Verileriniz %100 yerelde işlenmektedir, ETSO kodları gizlidir.")
-
-    render_analysis_panel(root_folder, mapping_path)
+    render_analysis_panel(root_folder, mapping_path, run_button)
 
 
 if __name__ == "__main__":
