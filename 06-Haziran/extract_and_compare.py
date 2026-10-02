@@ -947,6 +947,7 @@ def collect_source_header_mismatches(
         *region_mapping.get('tazminat_fields', []),
         *region_mapping.get('standart_disi_fields', []),
     ]
+    is_dicle_region = normalize_header(region_name) == normalize_header('Dicle EDAŞ')
     resolved_indices = resolve_column_indices(headers, region_mapping)
     mismatches = []
 
@@ -970,7 +971,8 @@ def collect_source_header_mismatches(
         if resolved_index in matching_indices:
             if resolved_header_shifts is not None and resolved_index != column_index:
                 resolved_header_shifts.append(field)
-            continue
+            if is_dicle_region:
+                continue
 
         matching_columns = [index_to_excel_column(index) for index in matching_indices]
         resolved_header = (
@@ -1029,7 +1031,7 @@ def report_source_header_mismatches(
         resolved_header_shifts=resolved_header_shifts,
     )
     if not mismatches and format_warning:
-        if resolved_header_shifts:
+        if resolved_header_shifts and normalize_header(region_name) == normalize_header('Dicle EDAŞ'):
             return
         warning_collector.append(format_warning)
         return

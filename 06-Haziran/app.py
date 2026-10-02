@@ -1150,14 +1150,7 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
     )
 
     source_header_warnings = stats.get("source_header_warnings", [])
-    if source_header_warnings:
-        format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
-        affected_company_count = len({row["Dağıtım Şirketi"] for row in format_warning_rows})
-        st.warning(
-            f"{format_turkish_integer(affected_company_count)} dağıtım şirketinde format farkı bulundu."
-        )
-        with st.expander("⚠️ Format Farkı", expanded=True):
-            render_format_warning_table(format_warning_rows)
+    format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
 
     with st.expander("📋 İşlem Logları", expanded=False):
         for log_line in st.session_state.get("processing_logs", []):
@@ -1209,6 +1202,14 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
         hide_index=True,
         height=620,
     )
+
+    if format_warning_rows:
+        affected_company_count = len({row["Dağıtım Şirketi"] for row in format_warning_rows})
+        with st.expander(
+            f"⚠️ Format Farkı ({format_turkish_integer(affected_company_count)} dağıtım şirketi)",
+            expanded=False,
+        ):
+            render_format_warning_table(format_warning_rows)
 
 
 
