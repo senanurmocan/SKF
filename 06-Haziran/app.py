@@ -1022,9 +1022,9 @@ def build_format_warning_rows(
     return [
         {
             "Dağıtım Şirketi": company,
-            "Olması Gereken Sütun ve İsim": "\n".join(group["expected"]),
-            "Mevcut Sütun ve İsim": "\n".join(group["current"]),
-            "Birleştirilen Veride": "\n".join(group["statuses"]),
+            "Olması Gereken Sütun ve İsim": ", ".join(group["expected"]),
+            "Mevcut Sütun ve İsim": ", ".join(group["current"]),
+            "Birleştirilen Veride": ", ".join(group["statuses"]),
         }
         for company, group in grouped.items()
     ]
@@ -1141,12 +1141,21 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
             f"{format_turkish_integer(len(format_warning_rows))} dağıtım şirketinde format farkı bulundu."
         )
         with st.expander("⚠️ Format Farkı", expanded=True):
-            st.dataframe(
-                pd.DataFrame(format_warning_rows),
-                width="stretch",
-                hide_index=True,
-                height=min(620, max(180, 58 * min(len(format_warning_rows), 10))),
-            )
+            for warning_row in format_warning_rows:
+                with st.container(border=True):
+                    st.markdown(f"**Dağıtım Şirketi:** {warning_row['Dağıtım Şirketi']}")
+                    st.markdown(
+                        "**Olması Gereken Sütun ve İsim:** "
+                        f"{warning_row['Olması Gereken Sütun ve İsim']}"
+                    )
+                    st.markdown(
+                        "**Mevcut Sütun ve İsim:** "
+                        f"{warning_row['Mevcut Sütun ve İsim']}"
+                    )
+                    st.markdown(
+                        "**Birleştirilen Veride:** "
+                        f"{warning_row['Birleştirilen Veride']}"
+                    )
 
     with st.expander("📋 İşlem Logları", expanded=False):
         for log_line in st.session_state.get("processing_logs", []):
