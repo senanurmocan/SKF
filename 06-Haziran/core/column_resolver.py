@@ -14,7 +14,7 @@ import pandas as pd
 from core.number_cleaner import normalize_header, clean_turkish_number
 from config.mappings import (
     FIELD_SYNONYMS,
-    KNOWN_ADJACENT_HEADER_SHIFTS,
+    KNOWN_HEADER_SEARCH_OVERRIDES,
     SPECIAL_HEADER_MAPPING,
 )
 from config.constants import EXTENDED_SUM_FIELDS
@@ -72,14 +72,17 @@ def resolve_column_indices(headers, region_mapping):
         fixed_idx = region_mapping.get(f'{field}_index', -1)
         found_idx = -1
 
-        shifted_idx = KNOWN_ADJACENT_HEADER_SHIFTS.get(norm_reg, {}).get(fixed_idx)
-        if (
-            shifted_idx is not None
-            and 0 <= shifted_idx < len(headers)
-            and header_name
-            and normalize_header(headers[shifted_idx]) == normalize_header(header_name)
-        ):
-            found_idx = shifted_idx
+        known_header = KNOWN_HEADER_SEARCH_OVERRIDES.get(norm_reg, {}).get(field)
+        if known_header:
+            known_header_normalized = normalize_header(known_header)
+            matching_known_indices = [
+                index for index, header in enumerate(normalized_headers)
+                if header == known_header_normalized
+            ]
+            if fixed_idx in matching_known_indices:
+                found_idx = fixed_idx
+            elif matching_known_indices:
+                found_idx = matching_known_indices[0]
 
         # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
         if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):

@@ -303,7 +303,7 @@ from new_mapping_parser import (
     index_to_excel_column,
     extract_file_filter,
 )
-from config.mappings import KNOWN_ADJACENT_HEADER_SHIFTS
+from config.mappings import KNOWN_HEADER_SEARCH_OVERRIDES
 from core.source_header_validator import (
     find_effective_header_row,
     is_known_source_header_layout,
@@ -972,17 +972,19 @@ def collect_source_header_mismatches(
         ]
         resolved_index = resolved_indices.get(field, -1)
         if resolved_index in matching_indices:
-            known_shift_index = KNOWN_ADJACENT_HEADER_SHIFTS.get(
-                normalize_region_name(region_name or '', to_format='reference'), {}
-            ).get(column_index)
-            is_known_shift = resolved_index == known_shift_index
+            normalized_region = normalize_region_name(region_name or '', to_format='reference')
+            known_header = KNOWN_HEADER_SEARCH_OVERRIDES.get(normalized_region, {}).get(field)
+            is_known_header_match = (
+                known_header is not None
+                and normalize_header(headers[resolved_index]) == normalize_header(known_header)
+            )
             if (
                 resolved_header_shifts is not None
                 and resolved_index != column_index
-                and (is_known_shift or is_dicle_region)
+                and (is_known_header_match or is_dicle_region)
             ):
                 resolved_header_shifts.append(field)
-            if is_dicle_region or is_known_shift:
+            if is_dicle_region or is_known_header_match:
                 continue
 
         matching_columns = [index_to_excel_column(index) for index in matching_indices]
@@ -1225,14 +1227,17 @@ def resolve_column_indices(headers, region_mapping):
         fixed_idx = region_mapping.get(f'{field}_index', -1)
         found_idx = -1
 
-        shifted_idx = KNOWN_ADJACENT_HEADER_SHIFTS.get(norm_reg, {}).get(fixed_idx)
-        if (
-            shifted_idx is not None
-            and 0 <= shifted_idx < len(headers)
-            and header_name
-            and normalize_header(headers[shifted_idx]) == normalize_header(header_name)
-        ):
-            found_idx = shifted_idx
+        known_header = KNOWN_HEADER_SEARCH_OVERRIDES.get(norm_reg, {}).get(field)
+        if known_header:
+            known_header_normalized = normalize_header(known_header)
+            matching_known_indices = [
+                index for index, header in enumerate(normalized_headers)
+                if header == known_header_normalized
+            ]
+            if fixed_idx in matching_known_indices:
+                found_idx = fixed_idx
+            elif matching_known_indices:
+                found_idx = matching_known_indices[0]
 
         # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
         if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):
