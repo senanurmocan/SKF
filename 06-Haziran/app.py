@@ -840,6 +840,7 @@ def run_analysis_pipeline(
         enrich_from_eno_file(normalized_records, root_folder)
         output_buffer = io.BytesIO()
         save_to_excel(normalized_records, output_buffer)
+        output_bytes = add_summary_worksheet(output_buffer.getvalue(), normalized_records)
 
     audit_results = audit_extracted_dataset(normalized_records)
     raw_columns = list(RAW_DATA_COLUMNS)
@@ -848,10 +849,69 @@ def run_analysis_pipeline(
             raw_columns.append(optional_column)
     raw_df = pd.DataFrame(normalized_records).reindex(columns=raw_columns)
     logs = build_processing_logs(normalized_records, stats, audit_results)
-    return raw_df, stats, audit_results, output_buffer.getvalue(), logs
+    return raw_df, stats, audit_results, output_bytes, logs
 
 
 
+
+
+def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) -> bytes:
+    """Rename the detail sheet and append company totals to the downloaded workbook."""
+    from openpyxl import load_workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    summary_fields = [
+        ("Aktif Enerji Tüketim (kWh)", "Aktif Enerji Tüketim (kWh)"),
+        ("Dağıtım Bedeli (TL)", "Dağıtım Bedeli(TL)"),
+        ("Güç Bedeli (TL)", "Güç Bedeli(TL)"),
+        ("Güç Aşım Bedeli (TL)", "Güç Aşım Bedeli (TL)"),
+        ("Reaktif Bedel (TL)", "Reaktif Bedel (TL)"),
+    ]
+    company_totals: dict[str, list[float]] = {}
+    for record in records:
+        company_value = record.get("Dağıtım Bölgesi")
+        company = str(company_value).strip() if company_value is not None else ""
+        if not company or company.casefold() == "nan":
+            company = "Bilinmeyen dağıtım şirketi"
+        totals = company_totals.setdefault(company, [0.0] * len(summary_fields))
+        for index, (_, source_field) in enumerate(summary_fields):
+            totals[index] += safe_float(record.get(source_field, 0))
+
+    workbook = load_workbook(io.BytesIO(output_bytes))
+    detail_sheet = workbook["Çıkarılan Veriler"]
+    detail_sheet.title = "Dağıtımın Kestiği"
+    summary_sheet = workbook.create_sheet("Özet")
+
+    headers = ["Dağıtım Şirketi", *(header for header, _ in summary_fields)]
+    summary_sheet.append(headers)
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(fill_type="solid", fgColor="305496")
+    for cell in summary_sheet[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    number_format = '#,##0.00;[Red]-#,##0.00;"-"'
+    for company, totals in company_totals.items():
+        summary_sheet.append([company, *totals])
+        row_index = summary_sheet.max_row
+        summary_sheet.cell(row_index, 1).alignment = Alignment(vertical="center")
+        for column_index in range(2, len(headers) + 1):
+            cell = summary_sheet.cell(row_index, column_index)
+            cell.number_format = number_format
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    summary_sheet.freeze_panes = "A2"
+    summary_sheet.auto_filter.ref = f"A1:F{summary_sheet.max_row}"
+    summary_sheet.row_dimensions[1].height = 32
+    for column_cells in summary_sheet.columns:
+        column_letter = column_cells[0].column_letter
+        max_length = max((len(str(cell.value or "")) for cell in column_cells), default=0)
+        summary_sheet.column_dimensions[column_letter].width = min(max(max_length + 2, 16), 42)
+
+    result_buffer = io.BytesIO()
+    workbook.save(result_buffer)
+    return result_buffer.getvalue()
 
 
 def render_metric_card(container: Any, label: str, value: str) -> None:
