@@ -1142,17 +1142,22 @@ def render_analysis_panel(
     read_count = int(stats.get("read_region_count", 0))
     expected_count = int(stats.get("expected_region_count", EXPECTED_REGION_COUNT))
     missing_regions = list(stats.get("missing_regions", []))
-    if read_count == expected_count and not missing_regions:
-        st.success(
-            f"{format_turkish_integer(expected_count)} bölgenin "
-            f"{format_turkish_integer(read_count)}'i başarıyla okundu."
-        )
-    else:
+    if read_count != expected_count or missing_regions:
         st.warning("Şu bölgeler okunamadı: " + ", ".join(missing_regions))
+
+    source_header_warnings = stats.get("source_header_warnings", [])
+    format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
+    if format_warning_rows:
+        affected_company_count = len({row["Dağıtım Şirketi"] for row in format_warning_rows})
+        with st.expander(
+            f"⚠️ Format Farkı ({format_turkish_integer(affected_company_count)} dağıtım şirketi)",
+            expanded=False,
+        ):
+            render_format_warning_table(format_warning_rows)
 
     records = raw_df.to_dict(orient="records")
     total_amount = total_distribution_amount(records)
-    metric_columns = st.columns(4)
+    metric_columns = st.columns(3)
     render_metric_card(metric_columns[0], "Toplam Kayıt", format_turkish_integer(len(raw_df)))
     render_metric_card(metric_columns[1], "Toplam Dağıtım Bedeli", format_turkish_currency(total_amount))
     render_metric_card(
@@ -1160,39 +1165,12 @@ def render_analysis_panel(
         "Okunan Bölge",
         f"{format_turkish_integer(read_count)} / {format_turkish_integer(expected_count)}",
     )
-    render_metric_card(
-        metric_columns[3],
-        "10 Milyon TL Üzeri Anomali",
-        format_turkish_integer(audit_results.get("high_value_count", 0)),
-    )
 
     st.caption(
         f"Veri sağlık skoru: %{format_turkish_integer(audit_results.get('health_score', 100))} | "
         f"Birleştirilen mükerrer kayıt: {format_turkish_integer(stats.get('merged_duplicates', 0))} | "
         f"Filtrelenen bozuk kayıt: {format_turkish_integer(stats.get('absurd_filtered', 0))}"
     )
-
-    source_header_warnings = stats.get("source_header_warnings", [])
-    format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
-
-    with st.expander("📋 İşlem Logları", expanded=False):
-        for log_line in st.session_state.get("processing_logs", []):
-            st.code(log_line, language=None)
-
-    st.markdown("#### 📥 Maskesiz Orijinal Excel Çıktısı")
-    st.caption(
-        "Ekrandaki ETSO kodları maskelidir. İndirilen Excel, kaynak ETSO kodlarını "
-        "değiştirmeden korur ve sütun genişliklerini içeriğe göre otomatik ayarlar."
-    )
-    if output_bytes:
-        st.download_button(
-            "📥 Çıkarılan_Veriler.xlsx Dosyasını İndir",
-            data=output_bytes,
-            file_name="Çıkarılan_Veriler.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch",
-            on_click="ignore",
-        )
 
     st.markdown("#### 🚨 Anomali ve Veri Kalitesi Paneli")
     st.caption("10.000.000,00 TL altındaki hiçbir fatura tutar anomalisi olarak gösterilmez.")
@@ -1214,8 +1192,25 @@ def render_analysis_panel(
     for warning in quality_warnings:
         st.info(warning.get("message", ""))
 
-    st.markdown(
-        f"#### 🔍 Veri Önizleme - {format_turkish_integer(len(raw_df))} Kayıt"
+    preview_title, download_column = st.columns([5, 2], gap="small", vertical_alignment="center")
+    with preview_title:
+        st.markdown(
+            f"#### 🔍 Veri Önizleme - {format_turkish_integer(len(raw_df))} Kayıt"
+        )
+    with download_column:
+        if output_bytes:
+            selected_folder_name = Path(os.path.normpath(root_folder)).name or "SKF"
+            st.download_button(
+                "📥 SKF Dosyasını İndir",
+                data=output_bytes,
+                file_name=f"{selected_folder_name} SKF.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+                on_click="ignore",
+            )
+    st.caption(
+        "Ekrandaki ETSO kodları maskelidir. İndirilen Excel, kaynak ETSO kodlarını "
+        "değiştirmeden korur ve sütun genişliklerini içeriğe göre otomatik ayarlar."
     )
     display_df = format_dataframe_for_ui(raw_df)
     st.dataframe(
@@ -1225,13 +1220,9 @@ def render_analysis_panel(
         height=620,
     )
 
-    if format_warning_rows:
-        affected_company_count = len({row["Dağıtım Şirketi"] for row in format_warning_rows})
-        with st.expander(
-            f"⚠️ Format Farkı ({format_turkish_integer(affected_company_count)} dağıtım şirketi)",
-            expanded=False,
-        ):
-            render_format_warning_table(format_warning_rows)
+    with st.expander("📋 İşlem Logları", expanded=False):
+        for log_line in st.session_state.get("processing_logs", []):
+            st.code(log_line, language=None)
 
 
 
