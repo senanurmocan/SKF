@@ -28,6 +28,14 @@ REGION_NAME_MAPPING = {
     "AKEDAŞ": "AKEDAŞ"
 }
 
+# Mapping başlığı aynı kalırken kaynaktaki karşılık bir sütun sağa kaymışsa,
+# yalnız bu dağıtım şirketi/sütun eşleşmelerinde komşu başlığı da ara.
+# İndeksler 0 tabanlıdır: Çamlıbel S->T / U->V; Trakya BQ->BR / BR->BS / BS->BT.
+KNOWN_ADJACENT_HEADER_SHIFTS = {
+    'Çamlıbel EDAŞ': {18: 19, 20: 21},
+    'Trakya EDAŞ': {68: 69, 69: 70, 70: 71},
+}
+
 # Referans dosyası ile extraction arasındaki region name mismatch'leri düzeltmek için
 # Extraction'da: 'ADM EDAŞ', 'AKEDAŞ', 'AYEDAŞ', 'Dicle EDAŞ', 'Fırat EDAŞ', 'Kayseri ve Civarı', 'Vangölü EDAŞ'
 # Referansda: 'AKEDAŞ (Göksu EDAŞ)', 'Aydem EDAŞ', 'AYEDAŞ', 'Dicle EDAŞ', 'Fırat EDAŞ', 'Kayseri EDAŞ', 'Vangölü EDAŞ'

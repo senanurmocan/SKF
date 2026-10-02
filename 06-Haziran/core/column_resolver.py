@@ -12,7 +12,11 @@ import unicodedata
 import pandas as pd
 
 from core.number_cleaner import normalize_header, clean_turkish_number
-from config.mappings import SPECIAL_HEADER_MAPPING, FIELD_SYNONYMS
+from config.mappings import (
+    FIELD_SYNONYMS,
+    KNOWN_ADJACENT_HEADER_SHIFTS,
+    SPECIAL_HEADER_MAPPING,
+)
 from config.constants import EXTENDED_SUM_FIELDS
 
 from core.normalizer import normalize_region_name
@@ -68,8 +72,17 @@ def resolve_column_indices(headers, region_mapping):
         fixed_idx = region_mapping.get(f'{field}_index', -1)
         found_idx = -1
 
+        shifted_idx = KNOWN_ADJACENT_HEADER_SHIFTS.get(norm_reg, {}).get(fixed_idx)
+        if (
+            shifted_idx is not None
+            and 0 <= shifted_idx < len(headers)
+            and header_name
+            and normalize_header(headers[shifted_idx]) == normalize_header(header_name)
+        ):
+            found_idx = shifted_idx
+
         # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
-        if field in force_fixed_fields and 0 <= fixed_idx < len(headers):
+        if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):
             found_idx = fixed_idx
 
         # Check SPECIAL_HEADER_MAPPING first (highest priority for region-specific overrides)

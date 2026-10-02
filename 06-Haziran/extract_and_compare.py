@@ -303,6 +303,7 @@ from new_mapping_parser import (
     index_to_excel_column,
     extract_file_filter,
 )
+from config.mappings import KNOWN_ADJACENT_HEADER_SHIFTS
 from core.source_header_validator import (
     find_effective_header_row,
     is_known_source_header_layout,
@@ -971,9 +972,17 @@ def collect_source_header_mismatches(
         ]
         resolved_index = resolved_indices.get(field, -1)
         if resolved_index in matching_indices:
-            if resolved_header_shifts is not None and resolved_index != column_index:
+            known_shift_index = KNOWN_ADJACENT_HEADER_SHIFTS.get(
+                normalize_region_name(region_name or '', to_format='reference'), {}
+            ).get(column_index)
+            is_known_shift = resolved_index == known_shift_index
+            if (
+                resolved_header_shifts is not None
+                and resolved_index != column_index
+                and (is_known_shift or is_dicle_region)
+            ):
                 resolved_header_shifts.append(field)
-            if is_dicle_region:
+            if is_dicle_region or is_known_shift:
                 continue
 
         matching_columns = [index_to_excel_column(index) for index in matching_indices]
@@ -1033,7 +1042,7 @@ def report_source_header_mismatches(
         resolved_header_shifts=resolved_header_shifts,
     )
     if not mismatches and format_warning:
-        if resolved_header_shifts and normalize_header(region_name) == normalize_header('Dicle EDAŞ'):
+        if resolved_header_shifts:
             return
         warning_collector.append(format_warning)
         return
@@ -1216,8 +1225,17 @@ def resolve_column_indices(headers, region_mapping):
         fixed_idx = region_mapping.get(f'{field}_index', -1)
         found_idx = -1
 
+        shifted_idx = KNOWN_ADJACENT_HEADER_SHIFTS.get(norm_reg, {}).get(fixed_idx)
+        if (
+            shifted_idx is not None
+            and 0 <= shifted_idx < len(headers)
+            and header_name
+            and normalize_header(headers[shifted_idx]) == normalize_header(header_name)
+        ):
+            found_idx = shifted_idx
+
         # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
-        if field in force_fixed_fields and 0 <= fixed_idx < len(headers):
+        if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):
             found_idx = fixed_idx
 
         # Check SPECIAL_HEADER_MAPPING first (highest priority for region-specific overrides)
