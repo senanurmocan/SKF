@@ -954,12 +954,12 @@ def build_format_warning_rows(
     merged_df: pd.DataFrame,
 ) -> list[dict[str, str]]:
     """Collapse repeated sheet warnings into unique company/header rows."""
-    grouped: dict[tuple[str, str, str, str], list[str]] = {}
+    grouped: dict[str, dict[tuple[str, str, str], list[str]]] = {}
     for warning in warnings:
         company = str(warning.get("Dağıtım Bölgesi") or "Bilinmeyen dağıtım şirketi")
         source_field = str(warning.get("Alan") or "")
         expected_header = warning.get("Beklenen başlık")
-        expected_column = warning.get("Eşlenen süt")
+        expected_column = warning.get("Eşlenen sütun")
         current_header = warning.get("Sütundaki başlık")
         if expected_header is not None:
             expected = f"{expected_column} - {expected_header}" if expected_column else str(expected_header)
@@ -981,47 +981,61 @@ def build_format_warning_rows(
             found_location = "-"
 
         status = "Bulundu" if is_found else "Bulunamadı"
-        key = (expected, current, company, status)
-        locations = grouped.setdefault(key, [])
+        key = (expected, current, status)
+        company_rows = grouped.setdefault(company, {})
+        locations = company_rows.setdefault(key, [])
         location = found_location if is_found else "-"
         if location not in locations:
             locations.append(location)
 
-    return [
-        {
-            "Olması Gereken Başlık/Sütun": expected,
-            "Mevcut Başlık/Sütun": current,
-            "Dağıtım Şirketi": company,
-            "Bulundu/Bulunamadı": status,
-            "Bulunduğu Başlık/Sütun": ", ".join(location for location in locations if location != "-") or "-",
-        }
-        for (expected, current, company, status), locations in grouped.items()
-    ]
+    rows = []
+    for company, company_rows in grouped.items():
+        for (expected, current, status), locations in company_rows.items():
+            rows.append({
+                "Dağıtım Şirketi": company,
+                "Olması Gereken Başlık/Sütun": expected,
+                "Mevcut Başlık/Sütun": current,
+                "Bulundu/Bulunamadı": status,
+                "Bulunduğu Başlık/Sütun": ", ".join(location for location in locations if location != "-") or "-",
+            })
+    return rows
 
 
 def render_format_warning_table(rows: list[dict[str, str]]) -> None:
     """Render a wrapping HTML table so full source header details stay visible."""
     columns = [
+        "Dağıtım Şirketi",
         "Olması Gereken Başlık/Sütun",
         "Mevcut Başlık/Sütun",
-        "Dağıtım Şirketi",
         "Bulundu/Bulunamadı",
         "Bulunduğu Başlık/Sütun",
     ]
-    widths = (24, 24, 16, 16, 20)
+    widths = (18, 21, 21, 15, 25)
     header_cells = "".join(
         f'<th style="width:{width}%;text-align:left;padding:8px;border:1px solid #808080;'
         f'white-space:normal;overflow-wrap:anywhere">{html.escape(column)}</th>'
         for column, width in zip(columns, widths)
     )
     body_rows = []
+    company_groups: dict[str, list[dict[str, str]]] = {}
     for row in rows:
-        cells = "".join(
-            '<td style="padding:8px;border:1px solid #808080;vertical-align:top;'
-            f'white-space:normal;overflow-wrap:anywhere">{html.escape(str(row.get(column, "-")))}</td>'
-            for column in columns
-        )
-        body_rows.append(f"<tr>{cells}</tr>")
+        company_groups.setdefault(row["Dağıtım Şirketi"], []).append(row)
+
+    for company, company_rows in company_groups.items():
+        for row_index, row in enumerate(company_rows):
+            cells = ""
+            if row_index == 0:
+                cells += (
+                    f'<td rowspan="{len(company_rows)}" style="padding:8px;border:1px solid #808080;'
+                    f'vertical-align:middle;white-space:normal;overflow-wrap:anywhere">'
+                    f'{html.escape(company)}</td>'
+                )
+            cells += "".join(
+                '<td style="padding:8px;border:1px solid #808080;vertical-align:top;'
+                f'white-space:normal;overflow-wrap:anywhere">{html.escape(str(row.get(column, "-")))}</td>'
+                for column in columns[1:]
+            )
+            body_rows.append(f"<tr>{cells}</tr>")
 
     table_html = (
         '<div style="width:100%;overflow-x:auto">'
