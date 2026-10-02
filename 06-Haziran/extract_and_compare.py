@@ -941,6 +941,7 @@ def collect_source_header_mismatches(headers, region_mapping, region_name, sourc
         *region_mapping.get('tazminat_fields', []),
         *region_mapping.get('standart_disi_fields', []),
     ]
+    resolved_indices = resolve_column_indices(headers, region_mapping)
     mismatches = []
 
     for field in fields:
@@ -959,6 +960,20 @@ def collect_source_header_mismatches(headers, region_mapping, region_name, sourc
             for index, header in enumerate(headers)
             if normalize_header(header) == expected_normalized
         ]
+        resolved_index = resolved_indices.get(field, -1)
+        resolved_header = (
+            headers[resolved_index]
+            if isinstance(resolved_index, int) and 0 <= resolved_index < len(headers)
+            else None
+        )
+        resolved_location = '-'
+        if isinstance(resolved_index, int) and 0 <= resolved_index < len(headers):
+            resolved_name = (
+                str(resolved_header).strip()
+                if resolved_header is not None and str(resolved_header).strip()
+                else '(başlıksız)'
+            )
+            resolved_location = f"{index_to_excel_column(resolved_index)} - {resolved_name}"
         mismatches.append({
             'Dağıtım Bölgesi': region_name or region_mapping.get('region_name', ''),
             'Kaynak': source_name,
@@ -967,6 +982,7 @@ def collect_source_header_mismatches(headers, region_mapping, region_name, sourc
             'Beklenen başlık': str(expected_header),
             'Sütundaki başlık': str(actual_header) if actual_header is not None else '(boş)',
             'Başlığın bulunduğu sütun': ', '.join(matching_columns) if matching_columns else '(bulunamadı)',
+            'Bulunduğu Başlık/Sütun': resolved_location,
         })
 
     return mismatches

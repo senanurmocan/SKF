@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import base64
+import html
 import io
 import tempfile
 import zipfile
@@ -911,26 +912,6 @@ _SOURCE_WARNING_OUTPUT_FIELDS = {
     "reaktif_tenzil2": ("Reaktif Bedel (TL)", "İlk Reaktif"),
 }
 
-_SOURCE_WARNING_FIELD_LABELS = {
-    "etso": "ETSO Kodu",
-    "musteri": "Müşteri",
-    "tarife": "Tarife Grubu",
-    "ag_og": "AG OG",
-    "terim": "TERİM",
-    "güç_kw": "Güç kW",
-    "kurulu_güç": "Kurulu Güç",
-    "aktif_enerji": "Aktif Enerji Tüketim (kWh)",
-    "trafo_kaybı": "Trafo Kaybı",
-    "dagitim_bedeli": "Dağıtım Bedeli (TL)",
-    "güç_bedeli": "Güç Bedeli (TL)",
-    "güç_aşım": "Güç Aşım Bedeli (TL)",
-    "reaktif": "Reaktif Bedel (TL)",
-    "reaktif2": "Reaktif Bedel (TL)",
-    "reaktif_tenzil": "İlk Reaktif / Tenzil",
-    "reaktif_tenzil2": "İlk Reaktif / Tenzil 2",
-}
-
-
 def _merged_warning_field_found(
     merged_df: pd.DataFrame,
     distribution_company: str,
@@ -972,15 +953,10 @@ def build_format_warning_rows(
     warnings: list[dict[str, Any]],
     merged_df: pd.DataFrame,
 ) -> list[dict[str, str]]:
-    """Collapse per-sheet header warnings into one summary row per company."""
-    grouped: dict[str, dict[str, Any]] = {}
+    """Collapse repeated sheet warnings into unique company/header rows."""
+    grouped: dict[tuple[str, str, str, str], list[str]] = {}
     for warning in warnings:
         company = str(warning.get("Dağıtım Bölgesi") or "Bilinmeyen dağıtım şirketi")
-        group = grouped.setdefault(
-            company,
-            {"expected": [], "current": [], "statuses": [], "seen": set()},
-        )
-
         source_field = str(warning.get("Alan") or "")
         expected_header = warning.get("Beklenen başlık")
         expected_column = warning.get("Eşlenen süt")
@@ -988,46 +964,71 @@ def build_format_warning_rows(
         if expected_header is not None:
             expected = f"{expected_column} - {expected_header}" if expected_column else str(expected_header)
             current = f"{expected_column} - {current_header or '(boş)'}" if expected_column else str(current_header or "(boş)")
-            found_at = warning.get("Başlığın bulunduğu sütun")
-            if found_at and found_at != "(bulunamadı)":
-                current += f" (olması gereken başlık {found_at} sütununda)"
-            field_label = _SOURCE_WARNING_FIELD_LABELS.get(
-                source_field,
-                str(expected_header),
-            )
             is_found = _merged_warning_field_found(merged_df, company, source_field)
+            found_location = str(warning.get("Bulunduğu Başlık/Sütun") or "-")
         else:
-            # The saved layout is represented by a signature, so no individual
-            # expected column can be named for this fallback warning.
-            expected = f"Kayıtlı düzen: {warning.get('Beklenen başlık', 'başlık düzeni')}"
-            current = "Başlık düzeni değişmiş"
+            # The saved layout is represented by a signature, so this fallback
+            # cannot name an individual expected or resolved column.
+            expected = f"Kayıtlı düzen - {warning.get('Beklenen başlık', 'başlık düzeni')}"
+            current = "Başlık düzeni - değişmiş"
             header_location = warning.get("Başlığın bulunduğu sütun")
             if header_location:
                 current += f" ({header_location})"
-            field_label = "Başlık düzeni"
             is_found = not merged_df.empty and bool(
                 (merged_df.get("Dağıtım Bölgesi", pd.Series(dtype=str)).fillna("").astype(str).str.casefold()
                  == company.casefold()).any()
             )
+            found_location = "-"
 
-        status = "Bulundu" if is_found else "Bulunamadı, Boş Bırakıldı"
-        details = (expected, current, f"{field_label}: {status}")
-        if details in group["seen"]:
-            continue
-        group["seen"].add(details)
-        group["expected"].append(expected)
-        group["current"].append(current)
-        group["statuses"].append(details[2])
+        status = "Bulundu" if is_found else "Bulunamadı"
+        key = (expected, current, company, status)
+        locations = grouped.setdefault(key, [])
+        location = found_location if is_found else "-"
+        if location not in locations:
+            locations.append(location)
 
     return [
         {
+            "Olması Gereken Başlık/Sütun": expected,
+            "Mevcut Başlık/Sütun": current,
             "Dağıtım Şirketi": company,
-            "Olması Gereken Sütun ve İsim": ", ".join(group["expected"]),
-            "Mevcut Sütun ve İsim": ", ".join(group["current"]),
-            "Birleştirilen Veride": ", ".join(group["statuses"]),
+            "Bulundu/Bulunamadı": status,
+            "Bulunduğu Başlık/Sütun": ", ".join(location for location in locations if location != "-") or "-",
         }
-        for company, group in grouped.items()
+        for (expected, current, company, status), locations in grouped.items()
     ]
+
+
+def render_format_warning_table(rows: list[dict[str, str]]) -> None:
+    """Render a wrapping HTML table so full source header details stay visible."""
+    columns = [
+        "Olması Gereken Başlık/Sütun",
+        "Mevcut Başlık/Sütun",
+        "Dağıtım Şirketi",
+        "Bulundu/Bulunamadı",
+        "Bulunduğu Başlık/Sütun",
+    ]
+    widths = (24, 24, 16, 16, 20)
+    header_cells = "".join(
+        f'<th style="width:{width}%;text-align:left;padding:8px;border:1px solid #808080;'
+        f'white-space:normal;overflow-wrap:anywhere">{html.escape(column)}</th>'
+        for column, width in zip(columns, widths)
+    )
+    body_rows = []
+    for row in rows:
+        cells = "".join(
+            '<td style="padding:8px;border:1px solid #808080;vertical-align:top;'
+            f'white-space:normal;overflow-wrap:anywhere">{html.escape(str(row.get(column, "-")))}</td>'
+            for column in columns
+        )
+        body_rows.append(f"<tr>{cells}</tr>")
+
+    table_html = (
+        '<div style="width:100%;overflow-x:auto">'
+        '<table style="width:100%;table-layout:fixed;border-collapse:collapse">'
+        f"<thead><tr>{header_cells}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>"
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
 
 
 def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
@@ -1137,25 +1138,12 @@ def render_analysis_panel(root_folder: str, mapping_path: str | None) -> None:
     source_header_warnings = stats.get("source_header_warnings", [])
     if source_header_warnings:
         format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
+        affected_company_count = len({row["Dağıtım Şirketi"] for row in format_warning_rows})
         st.warning(
-            f"{format_turkish_integer(len(format_warning_rows))} dağıtım şirketinde format farkı bulundu."
+            f"{format_turkish_integer(affected_company_count)} dağıtım şirketinde format farkı bulundu."
         )
         with st.expander("⚠️ Format Farkı", expanded=True):
-            for warning_row in format_warning_rows:
-                with st.container(border=True):
-                    st.markdown(f"**Dağıtım Şirketi:** {warning_row['Dağıtım Şirketi']}")
-                    st.markdown(
-                        "**Olması Gereken Sütun ve İsim:** "
-                        f"{warning_row['Olması Gereken Sütun ve İsim']}"
-                    )
-                    st.markdown(
-                        "**Mevcut Sütun ve İsim:** "
-                        f"{warning_row['Mevcut Sütun ve İsim']}"
-                    )
-                    st.markdown(
-                        "**Birleştirilen Veride:** "
-                        f"{warning_row['Birleştirilen Veride']}"
-                    )
+            render_format_warning_table(format_warning_rows)
 
     with st.expander("📋 İşlem Logları", expanded=False):
         for log_line in st.session_state.get("processing_logs", []):
