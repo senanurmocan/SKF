@@ -518,8 +518,8 @@ def apply_note_rules(mapping, region_name):
     if region_name == 'Çamlıbel EDAŞ':
         rules['force_fixed_fields'] = ['tarife', 'ag_og', 'terim']
 
-    # Notlar 7 #2: Bu bölgelerde Reaktif Bedel yalnız base iki alandan oluşur.
-    base_reactive_regions = ['ADM EDAŞ', 'Gediz EDAŞ', 'Trakya EDAŞ', 'Uludağ EDAŞ']
+    # Notlar 7 #2; Meram'da tenzil/ihlal yalnız İlk Reaktif alanında kalır.
+    base_reactive_regions = ['ADM EDAŞ', 'Gediz EDAŞ', 'Trakya EDAŞ', 'Uludağ EDAŞ', 'Meram EDAŞ']
     if region_name in base_reactive_regions:
         rules['reactive_total_rule'] = 'base_columns_only'
     

@@ -133,12 +133,15 @@ _SPECIAL_HEADER_MAPPING_FALLBACK = {
     },
     'Meram EDAŞ': {
         'reaktif': 'REAKTİF TÜKETİM',
+        'reaktif_tenzil': 'Reaktif Bedel İhlal',
     },
     'MERAM EDAŞ': {
         'reaktif': 'REAKTİF TÜKETİM',
+        'reaktif_tenzil': 'Reaktif Bedel İhlal',
     },
     'MERAM': {
         'reaktif': 'REAKTİF TÜKETİM',
+        'reaktif_tenzil': 'Reaktif Bedel İhlal',
     },
     'Sakarya EDAŞ': {
         'reaktif': 'Reaktif Bedel (TL)',

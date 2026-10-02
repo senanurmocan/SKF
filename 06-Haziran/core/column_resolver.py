@@ -111,7 +111,9 @@ def resolve_reactive_field_groups(region_mapping, region_name):
     """Reaktif ve İlk Reaktif kaynak alanlarını bölgesel kurallarla seç."""
     reactive_rule = region_mapping.get('rules', {}).get('reactive_total_rule')
     norm_rn = normalize_region_name(region_name or '', to_format='reference')
-    no_tenzil_regions = ['Aras EDAŞ', 'Çoruh EDAŞ', 'Dicle EDAŞ', 'Fırat EDAŞ', 'Vangölü EDAŞ']
+    no_tenzil_regions = [
+        'Aras EDAŞ', 'Çoruh EDAŞ', 'Dicle EDAŞ', 'Fırat EDAŞ', 'Vangölü EDAŞ', 'Meram EDAŞ'
+    ]
 
     if reactive_rule in {'single_column', 'base_columns_only'} or norm_rn in no_tenzil_regions:
         reactive_fields = ['reaktif', 'reaktif2']
