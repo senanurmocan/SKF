@@ -170,7 +170,7 @@ def inject_corporate_css() -> None:
         }
         [data-testid="stMainBlockContainer"] {
             max-width: none;
-            padding-top: 0.75rem;
+            padding-top: 3rem;
             padding-left: 1rem;
             padding-right: 1rem;
         }
@@ -188,7 +188,17 @@ def inject_corporate_css() -> None:
         .ck-subtitle {
             color: var(--ck-navy-gray);
             font-size: 1rem;
-            margin-bottom: 1.1rem;
+            margin-bottom: 0.25rem;
+        }
+        .ck-section-title {
+            color: var(--ck-navy-gray);
+            font-size: 1.5rem;
+            font-weight: 650;
+            line-height: 1.3;
+            margin: 0;
+        }
+        .stMainBlockContainer div[data-testid="stElementContainer"]:has(.ck-section-title) {
+            margin-top: -0.6rem;
         }
         .ck-card {
             min-height: 116px;
@@ -260,6 +270,7 @@ def inject_corporate_css() -> None:
             }
             .ck-title { color: #7BA7E8 !important; }
             .ck-subtitle { color: #A0AAB8 !important; }
+            .ck-section-title { color: #D0D8E8 !important; }
             .ck-card {
                 background: #252535 !important;
                 border-color: #3A3A4A !important;
@@ -1062,7 +1073,10 @@ def render_analysis_panel(
     mapping_path: str | None,
     run_button: bool = False,
 ) -> None:
-    st.subheader("⚙️ Veri İşleme ve Kurumsal Rapor")
+    st.markdown(
+        '<div class="ck-section-title">⚙️ Veri İşleme ve Kurumsal Rapor</div>',
+        unsafe_allow_html=True,
+    )
 
     valid_root = bool(root_folder and os.path.isdir(root_folder))
     valid_mapping = bool(mapping_path and os.path.isfile(mapping_path))
