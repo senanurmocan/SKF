@@ -932,7 +932,13 @@ def normalize_header(header):
     return header
 
 
-def collect_source_header_mismatches(headers, region_mapping, region_name, source_name):
+def collect_source_header_mismatches(
+    headers,
+    region_mapping,
+    region_name,
+    source_name,
+    resolved_header_shifts=None,
+):
     """Mapping'deki sütun harfi ile gerçek kaynak başlığını karşılaştır."""
     fields = [
         'etso', 'musteri', 'tarife', 'ag_og', 'terim', 'güç_kw', 'kurulu_güç',
@@ -955,12 +961,18 @@ def collect_source_header_mismatches(headers, region_mapping, region_name, sourc
         if normalize_header(actual_header) == expected_normalized:
             continue
 
-        matching_columns = [
-            index_to_excel_column(index)
+        matching_indices = [
+            index
             for index, header in enumerate(headers)
             if normalize_header(header) == expected_normalized
         ]
         resolved_index = resolved_indices.get(field, -1)
+        if resolved_index in matching_indices:
+            if resolved_header_shifts is not None and resolved_index != column_index:
+                resolved_header_shifts.append(field)
+            continue
+
+        matching_columns = [index_to_excel_column(index) for index in matching_indices]
         resolved_header = (
             headers[resolved_index]
             if isinstance(resolved_index, int) and 0 <= resolved_index < len(headers)
@@ -1008,10 +1020,17 @@ def report_source_header_mismatches(
         if not format_warning:
             return
 
+    resolved_header_shifts = []
     mismatches = collect_source_header_mismatches(
-        headers, region_mapping, region_name, source_name
+        headers,
+        region_mapping,
+        region_name,
+        source_name,
+        resolved_header_shifts=resolved_header_shifts,
     )
     if not mismatches and format_warning:
+        if resolved_header_shifts:
+            return
         warning_collector.append(format_warning)
         return
 
