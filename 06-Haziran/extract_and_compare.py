@@ -532,7 +532,9 @@ def parse_excel_file(filepath):
             # HTML formatı - parse_html_file kullan
             return None  # Caller should use parse_html_file
         elif filepath.endswith(('.xlsx', '.XLSX')):
-            wb = openpyxl.load_workbook(filepath)
+            # Large SKF sheets can contain millions of styled but empty cells.
+            # Read-only mode streams them instead of building every cell object in RAM.
+            wb = openpyxl.load_workbook(filepath, read_only=True)
             return {'type': 'xlsx', 'workbook': wb}
         elif filepath.endswith(('.xls', '.XLS')):
             try:
@@ -974,6 +976,7 @@ def collect_source_header_mismatches(
         if resolved_index in matching_indices:
             normalized_region = normalize_region_name(region_name or '', to_format='reference')
             known_header = KNOWN_HEADER_SEARCH_OVERRIDES.get(normalized_region, {}).get(field)
+            is_adjacent_header_match = abs(resolved_index - column_index) == 1
             is_known_header_match = (
                 known_header is not None
                 and normalize_header(headers[resolved_index]) == normalize_header(known_header)
@@ -981,10 +984,10 @@ def collect_source_header_mismatches(
             if (
                 resolved_header_shifts is not None
                 and resolved_index != column_index
-                and (is_known_header_match or is_dicle_region)
+                and (is_adjacent_header_match or is_known_header_match or is_dicle_region)
             ):
                 resolved_header_shifts.append(field)
-            if is_dicle_region or is_known_header_match:
+            if (is_dicle_region or is_known_header_match) and not is_adjacent_header_match:
                 continue
 
         matching_columns = [index_to_excel_column(index) for index in matching_indices]
@@ -1010,6 +1013,12 @@ def collect_source_header_mismatches(
             'Sütundaki başlık': str(actual_header) if actual_header is not None else '(boş)',
             'Başlığın bulunduğu sütun': ', '.join(matching_columns) if matching_columns else '(bulunamadı)',
             'Bulunduğu Başlık/Sütun': resolved_location,
+            'Bulunan sütun': (
+                index_to_excel_column(resolved_index)
+                if resolved_index in matching_indices
+                else '-'
+            ),
+            'Başlık eşleşti': resolved_index in matching_indices,
         })
 
     return mismatches
@@ -1032,9 +1041,6 @@ def report_source_header_mismatches(
             source_name,
             header_row_number=header_row_number,
         )
-        if not format_warning:
-            return
-
     resolved_header_shifts = []
     mismatches = collect_source_header_mismatches(
         headers,
@@ -1043,6 +1049,8 @@ def report_source_header_mismatches(
         source_name,
         resolved_header_shifts=resolved_header_shifts,
     )
+    if not format_warning and not resolved_header_shifts:
+        return
     if not mismatches and format_warning:
         if resolved_header_shifts:
             return
@@ -1219,6 +1227,28 @@ def resolve_column_indices(headers, region_mapping):
     normalized_headers = [normalize_header(h) for h in headers]
     resolved = {}
 
+    # Prefer an exact mapped or adjacent header before the existing full-row fallback.
+    def find_header_near_mapping(expected_normalized, mapped_index):
+        if not expected_normalized:
+            return -1
+        try:
+            mapped_index = int(mapped_index)
+        except (TypeError, ValueError, OverflowError):
+            mapped_index = -1
+        if 0 <= mapped_index < len(headers):
+            if normalized_headers[mapped_index] == expected_normalized:
+                return mapped_index
+        if mapped_index >= 0:
+            for adjacent_index in (mapped_index - 1, mapped_index + 1):
+                if (
+                    0 <= adjacent_index < len(headers)
+                    and normalized_headers[adjacent_index] == expected_normalized
+                ):
+                    return adjacent_index
+        if expected_normalized in normalized_headers:
+            return normalized_headers.index(expected_normalized)
+        return -1
+
     norm_reg = normalize_region_name(region_mapping.get('region_name', ''), to_format='reference')
     force_fixed_fields = set(region_mapping.get('rules', {}).get('force_fixed_fields', []))
 
@@ -1230,14 +1260,7 @@ def resolve_column_indices(headers, region_mapping):
         known_header = KNOWN_HEADER_SEARCH_OVERRIDES.get(norm_reg, {}).get(field)
         if known_header:
             known_header_normalized = normalize_header(known_header)
-            matching_known_indices = [
-                index for index, header in enumerate(normalized_headers)
-                if header == known_header_normalized
-            ]
-            if fixed_idx in matching_known_indices:
-                found_idx = fixed_idx
-            elif matching_known_indices:
-                found_idx = matching_known_indices[0]
+            found_idx = find_header_near_mapping(known_header_normalized, fixed_idx)
 
         # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
         if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):
@@ -1252,13 +1275,11 @@ def resolve_column_indices(headers, region_mapping):
                 found_idx = sp_val
             else:
                 norm_sp = normalize_header(sp_val)
-                if norm_sp in normalized_headers:
-                    found_idx = normalized_headers.index(norm_sp)
+                found_idx = find_header_near_mapping(norm_sp, fixed_idx)
 
         if found_idx == -1 and header_name and pd.notna(header_name) and str(header_name).strip() != '-':
             norm_target = normalize_header(header_name)
-            if norm_target and norm_target in normalized_headers:
-                found_idx = normalized_headers.index(norm_target)
+            found_idx = find_header_near_mapping(norm_target, fixed_idx)
 
         # Keep established extraction behavior: use the mapped column before synonyms.
         if found_idx == -1 and 0 <= fixed_idx < len(headers):
@@ -1445,19 +1466,25 @@ def read_excel_content(
     data_rows = []
 
     if file_info['type'] == 'xlsx':
+        from itertools import chain, islice
+
         wb = file_info['workbook']
         for sheet_name in wb.sheetnames:
             sheet = wb[sheet_name]
-            rows = list(sheet.iter_rows(values_only=True))
-            if not rows:
+            row_iterator = iter(sheet.iter_rows(values_only=True))
+            headers = next(row_iterator, None)
+            if headers is None:
                 continue
 
-            headers = rows[0]
             validation_headers = headers
             validation_header_row_number = 1
             if is_known_source_header_layout(region_name):
-                validation_row_index, validation_headers = find_effective_header_row(rows)
+                header_scan_rows = [headers, *islice(row_iterator, 4)]
+                validation_row_index, validation_headers = find_effective_header_row(header_scan_rows)
                 validation_header_row_number = validation_row_index + 1
+                source_rows = chain(header_scan_rows[1:], row_iterator)
+            else:
+                source_rows = row_iterator
 
             # Sütun indekslerini dinamik resolver ile çözümler
             active_mapping = region_mapping
@@ -1524,7 +1551,7 @@ def read_excel_content(
             )
 
             # Veri satırlarını işle
-            for row in rows[1:]:
+            for row in source_rows:
                 if not row or all(v is None for v in row):
                     continue
 
@@ -1539,12 +1566,13 @@ def read_excel_content(
                 aktif_val = extract_value_from_row(row, aktif_idx, field_name='aktif_enerji', region_name=region_name)
                 trafo_val = extract_value_from_row(row, trafo_kaybi_idx, field_name='trafo_kaybı', region_name=region_name)
                 dagitim_val = extract_value_from_row(row, dagitim_idx, field_name='dagitim_bedeli', region_name=region_name)
+                acma_kesme_idx = -1
                 if norm_rn == 'Akdeniz EDAŞ':
                     acma_kesme_idx = find_column_index(headers, ['Enerji_Acma_Kesme_Bedeli', 'acmakesmebedeli', 'kesmebedeli'], region=region_name)
-                    if acma_kesme_idx >= 0 and acma_kesme_idx < len(row):
-                        ak_val = clean_turkish_number(row[acma_kesme_idx], region_name=region_name, field_name='dagitim_bedeli')
-                        if ak_val:
-                            dagitim_val += ak_val
+                if acma_kesme_idx >= 0 and acma_kesme_idx < len(row):
+                    ak_val = clean_turkish_number(row[acma_kesme_idx], region_name=region_name, field_name='dagitim_bedeli')
+                    if ak_val:
+                        dagitim_val += ak_val
 
                 # Notlar 12 #1: Sakarya EDAŞ aktif enerji artık doğrudan mapping'den
                 # 'Dağıtım Miktarı' (Sütun AR) başlığıyla geliyor. Fallback gereksiz.
@@ -1881,14 +1909,17 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
             if file_format == 'xlsx':
                 file_info = parse_excel_file(fpath)
                 if file_info and file_info['type'] == 'xlsx':
-                    data = read_excel_content(
-                        file_info,
-                        region_mapping,
-                        region_name=region,
-                        alt_region_mapping=alt_region_mapping,
-                        source_name=fname,
-                        warning_collector=source_header_warnings,
-                    )
+                    try:
+                        data = read_excel_content(
+                            file_info,
+                            region_mapping,
+                            region_name=region,
+                            alt_region_mapping=alt_region_mapping,
+                            source_name=fname,
+                            warning_collector=source_header_warnings,
+                        )
+                    finally:
+                        file_info['workbook'].close()
                     region_all_data.extend(data)
                     processed_count += len(data)
                     file_was_processed = True
@@ -1926,14 +1957,17 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
                             file_was_processed = True
                             print(f"  {fname}: XML formatı (xls uzantılı) - {len(data)} satır çıkarıldı")
                 elif file_info and file_info['type'] == 'xls':
-                    data = read_excel_content(
-                        file_info,
-                        region_mapping,
-                        region_name=region,
-                        alt_region_mapping=alt_region_mapping,
-                        source_name=fname,
-                        warning_collector=source_header_warnings,
-                    )
+                    try:
+                        data = read_excel_content(
+                            file_info,
+                            region_mapping,
+                            region_name=region,
+                            alt_region_mapping=alt_region_mapping,
+                            source_name=fname,
+                            warning_collector=source_header_warnings,
+                        )
+                    finally:
+                        file_info['workbook'].release_resources()
                     region_all_data.extend(data)
                     processed_count += len(data)
                     file_was_processed = True
@@ -2366,27 +2400,17 @@ def _load_eno_lookups(eno_path):
     eic_to_abone = {}     # str(EIC Kod) → str(Abone Ad-Soyad)
     
     try:
-        wb = openpyxl.load_workbook(eno_path, read_only=False, data_only=True)
+        wb = openpyxl.load_workbook(eno_path, read_only=True, data_only=True)
         ws = wb.active
         
         row_count = 0
-        for row in ws.iter_rows(min_row=3, max_col=35, values_only=False):  # Satır 3'ten başla (veri)
+        # D, E ve AD sütunları gerekiyor; yalnızca D:AD aralığını akış halinde oku.
+        for row in ws.iter_rows(min_row=3, min_col=4, max_col=30, values_only=True):
             row_count += 1
-            # D sütunu (col 4, 1-indexed) = Sayaç EIC Kod
-            # E sütunu (col 5, 1-indexed) = Sayaç ID
-            # AD sütunu (col 30, 1-indexed) = Abone Ad-Soyad / Unvan
-            d_val = None
-            e_val = None
-            ad_val = None
-            
-            for cell in row:
-                if cell.column == 4:
-                    d_val = cell.value
-                elif cell.column == 5:
-                    e_val = cell.value
-                elif cell.column == 30:
-                    ad_val = cell.value
-            
+            d_val = row[0] if len(row) > 0 else None
+            e_val = row[1] if len(row) > 1 else None
+            ad_val = row[26] if len(row) > 26 else None
+
             if d_val is not None:
                 eic_str = str(d_val).strip()
                 
@@ -2488,6 +2512,7 @@ def enrich_from_eno_file(records, base_path):
 def save_to_excel(data, filepath):
     """Veriyi Excel'e kaydet - Formüller, Sayı Biçimleri ve Başlık Biçimlendirmesi ile"""
     from openpyxl.styles import Font, PatternFill, Alignment
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Çıkarılan Veriler'
@@ -2540,9 +2565,9 @@ def save_to_excel(data, filepath):
             row.get('Güç Bedeli(TL)', ''),
             row.get('Güç Aşım Bedeli (TL)', ''),
             row.get('Reaktif Bedel (TL)', ''),
-            f"=J{idx}+K{idx}+L{idx}+M{idx}",           # N: KDV Matrahı (TL)
-            f"=N{idx}*0.2",                              # O: KDV
-            f"=N{idx}+O{idx}+Q{idx}",                    # P: Toplam (TL)
+            f"=J{idx}+K{idx}+L{idx}+M{idx}",
+            f"=N{idx}*0.2",
+            f"=N{idx}+O{idx}+Q{idx}",
             row.get('İlk Reaktif', ''),                  # Q: İlk Reaktif Bedeli (TL)
             row.get("Sayax'a Atılacak Tarife", '')       # R: Sayax'a Atılacak Tarife
         ]

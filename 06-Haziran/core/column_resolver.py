@@ -64,6 +64,28 @@ def resolve_column_indices(headers, region_mapping):
     normalized_headers = [normalize_header(h) for h in headers]
     resolved = {}
 
+    # Prefer an exact mapped or adjacent header before the existing full-row fallback.
+    def find_header_near_mapping(expected_normalized, mapped_index):
+        if not expected_normalized:
+            return -1
+        try:
+            mapped_index = int(mapped_index)
+        except (TypeError, ValueError, OverflowError):
+            mapped_index = -1
+        if 0 <= mapped_index < len(headers):
+            if normalized_headers[mapped_index] == expected_normalized:
+                return mapped_index
+        if mapped_index >= 0:
+            for adjacent_index in (mapped_index - 1, mapped_index + 1):
+                if (
+                    0 <= adjacent_index < len(headers)
+                    and normalized_headers[adjacent_index] == expected_normalized
+                ):
+                    return adjacent_index
+        if expected_normalized in normalized_headers:
+            return normalized_headers.index(expected_normalized)
+        return -1
+
     norm_reg = normalize_region_name(region_mapping.get('region_name', ''), to_format='reference')
     force_fixed_fields = set(region_mapping.get('rules', {}).get('force_fixed_fields', []))
 
@@ -75,14 +97,7 @@ def resolve_column_indices(headers, region_mapping):
         known_header = KNOWN_HEADER_SEARCH_OVERRIDES.get(norm_reg, {}).get(field)
         if known_header:
             known_header_normalized = normalize_header(known_header)
-            matching_known_indices = [
-                index for index, header in enumerate(normalized_headers)
-                if header == known_header_normalized
-            ]
-            if fixed_idx in matching_known_indices:
-                found_idx = fixed_idx
-            elif matching_known_indices:
-                found_idx = matching_known_indices[0]
+            found_idx = find_header_near_mapping(known_header_normalized, fixed_idx)
 
         # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
         if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):
@@ -97,13 +112,11 @@ def resolve_column_indices(headers, region_mapping):
                 found_idx = sp_val
             else:
                 norm_sp = normalize_header(sp_val)
-                if norm_sp in normalized_headers:
-                    found_idx = normalized_headers.index(norm_sp)
+                found_idx = find_header_near_mapping(norm_sp, fixed_idx)
 
         if found_idx == -1 and header_name and pd.notna(header_name) and str(header_name).strip() != '-':
             norm_target = normalize_header(header_name)
-            if norm_target and norm_target in normalized_headers:
-                found_idx = normalized_headers.index(norm_target)
+            found_idx = find_header_near_mapping(norm_target, fixed_idx)
 
         # Prioritize explicitly assigned column index from mapping if header name didn't match directly
         if found_idx == -1 and 0 <= fixed_idx < len(headers):

@@ -54,6 +54,7 @@ Thumbs.db
 **/*.HTML
 **/*.LOG
 **/test_core_output.txt
+06-Haziran/config/system_usage_file.json
 
 # Local project history from the previous repository, if retained for recovery.
 .git.legacy/
