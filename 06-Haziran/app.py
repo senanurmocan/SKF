@@ -428,6 +428,159 @@ def inject_corporate_css() -> None:
             unsafe_allow_html=True,
         )
 
+    dark_mode = bool(st.session_state.get("dark_mode", False))
+    theme_tokens = (
+        "--ck-blue: #78A7E8; --ck-orange: #F09A5B; --ck-green: #86C36A; "
+        "--ck-text: #E6EDF6; --ck-muted: #A6B2C2; --ck-canvas: #151C26; "
+        "--ck-surface: #1D2734; --ck-sidebar: #19222E; --ck-control: #222E3D; "
+        "--ck-hover: #2A394B; --ck-border: #344255; --ck-shadow: 0 10px 28px rgba(0,0,0,.18);"
+        if dark_mode else
+        "--ck-blue: #305496; --ck-orange: #ED7D31; --ck-green: #5F963E; "
+        "--ck-text: #263447; --ck-muted: #66758A; --ck-canvas: #F4F6FA; "
+        "--ck-surface: #FFFFFF; --ck-sidebar: #F7F9FC; --ck-control: #FFFFFF; "
+        "--ck-hover: #EFF4FA; --ck-border: #E1E7EF; --ck-shadow: 0 10px 28px rgba(38,52,71,.07);"
+    )
+    st.markdown(
+        """
+        <style>
+        :root { THEME_TOKENS }
+        [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+            background: var(--ck-canvas);
+            color: var(--ck-text);
+        }
+        [data-testid="stMainBlockContainer"] {
+            max-width: 1560px;
+            padding: 2.15rem clamp(1rem, 3vw, 2.6rem) 3rem;
+        }
+        [data-testid="stSidebar"] {
+            background: var(--ck-sidebar);
+            border-right: 1px solid var(--ck-border);
+        }
+        [data-testid="stSidebar"] > div:first-child { padding: 1.2rem 1rem 1.6rem; }
+        [data-testid="stSidebar"] [data-testid="stImage"] { margin: .1rem 0 1.1rem; }
+        .ck-title {
+            position: relative;
+            color: var(--ck-blue);
+            font-size: clamp(1.65rem, 2.2vw, 2.15rem);
+            font-weight: 760;
+            letter-spacing: -.035em;
+            line-height: 1.14;
+            margin: .15rem 0 .4rem;
+            padding-left: .9rem;
+        }
+        .ck-title::before {
+            position: absolute;
+            inset: .08em auto .08em 0;
+            width: 4px;
+            border-radius: 4px;
+            background: var(--ck-orange);
+            content: "";
+        }
+        .ck-subtitle {
+            max-width: 58rem;
+            color: var(--ck-muted);
+            font-size: .96rem;
+            line-height: 1.55;
+            margin: .35rem 0 .5rem .9rem;
+        }
+        .ck-section-title {
+            color: var(--ck-text);
+            font-size: 1.32rem;
+            font-weight: 720;
+            letter-spacing: -.025em;
+            line-height: 1.35;
+        }
+        .stMainBlockContainer div[data-testid="stElementContainer"]:has(.ck-section-title) {
+            position: static;
+            top: auto;
+            margin: 1.7rem 0 .8rem;
+            padding-bottom: .7rem;
+            border-bottom: 1px solid var(--ck-border);
+        }
+        .ck-card {
+            min-height: 112px;
+            background: var(--ck-surface);
+            border: 1px solid var(--ck-border);
+            border-left: 4px solid var(--ck-orange);
+            border-radius: 12px;
+            padding: 1.05rem 1.1rem;
+            box-shadow: var(--ck-shadow);
+        }
+        .ck-card-label {
+            color: var(--ck-muted);
+            font-size: .8rem;
+            font-weight: 680;
+            letter-spacing: .045em;
+            text-transform: uppercase;
+        }
+        .ck-card-value {
+            color: var(--ck-text);
+            font-size: 1.62rem;
+            font-weight: 760;
+            letter-spacing: -.03em;
+            line-height: 1.25;
+            margin-top: .55rem;
+        }
+        [data-testid="stWidgetLabel"] p,
+        [data-testid="stCaptionContainer"] { color: var(--ck-muted); }
+        [data-testid="stTextInput"] input,
+        [data-testid="stNumberInput"] input,
+        [data-baseweb="input"] input,
+        [data-baseweb="select"] > div {
+            background: var(--ck-control);
+            color: var(--ck-text);
+            border-color: var(--ck-border);
+            border-radius: 9px;
+        }
+        div.stButton > button, div.stDownloadButton > button {
+            min-height: 2.55rem;
+            border-radius: 9px;
+            font-weight: 650;
+            transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+        }
+        div.stButton > button:not([kind="primary"]) {
+            background: var(--ck-surface);
+            color: var(--ck-text);
+            border-color: var(--ck-border);
+        }
+        div.stButton > button:not([kind="primary"]):hover {
+            background: var(--ck-hover);
+            border-color: var(--ck-blue);
+            color: var(--ck-blue);
+            transform: translateY(-1px);
+        }
+        div.stButton > button[kind="primary"], div.stDownloadButton > button {
+            background: #305496;
+            color: #FFFFFF;
+            border-color: #305496;
+        }
+        div.stButton > button[kind="primary"]:hover,
+        div.stDownloadButton > button:hover {
+            background: #ED7D31;
+            border-color: #ED7D31;
+            color: #FFFFFF;
+        }
+        [data-testid="stAlert"], [data-testid="stDataFrame"] {
+            border-radius: 10px;
+        }
+        [data-testid="stExpander"] {
+            overflow: hidden;
+            background: var(--ck-surface);
+            border: 1px solid var(--ck-border);
+            border-radius: 10px;
+        }
+        @media (max-width: 760px) {
+            [data-testid="stMainBlockContainer"] { padding: 1.35rem 1rem 2rem; }
+            .ck-title { font-size: 1.6rem; }
+            .ck-subtitle { font-size: .9rem; }
+            .ck-card { min-height: 96px; padding: .85rem; }
+            .ck-card-value { font-size: 1.35rem; }
+        }
+        </style>
+        """.replace("THEME_TOKENS", theme_tokens),
+        unsafe_allow_html=True,
+    )
+
 
 def select_folder_via_dialog(dialog_title: str) -> str | None:
     """Yerel Windows klasör seçicisini aç; başarısızsa metin girişi kullanılır."""
