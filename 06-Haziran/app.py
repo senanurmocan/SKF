@@ -2948,6 +2948,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         if selected_folder:
             clear_analysis_state()
             st.session_state["selected_root_folder"] = selected_folder
+            st.session_state["manual_selected_root_folder"] = selected_folder
             st.rerun()
         else:
             st.sidebar.info("Klasör seçilmedi veya pencere açılamadı. Dosya yollarını elle girebilirsiniz.")
@@ -2970,6 +2971,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         if selected_file:
             clear_analysis_state()
             st.session_state["selected_invoice_file"] = selected_file
+            st.session_state["manual_selected_invoice_file"] = selected_file
             st.rerun()
         else:
             st.sidebar.info("Excel dosyası seçilmedi veya dosya penceresi açılamadı. Dosya yolunu aşağıya yazabilirsiniz.")
@@ -3000,6 +3002,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
                 st.sidebar.error("Lütfen bir Excel dosyası seçin.")
             else:
                 st.session_state["selected_eno_file"] = new_eno_file
+                st.session_state["manual_selected_eno_file"] = new_eno_file
                 if new_eno_file != selected_eno_file:
                     clear_analysis_state()
                 save_error = save_eno_file_selection(new_eno_file)
@@ -3012,27 +3015,44 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         else:
             st.sidebar.info("Kesin Liste dosyası seçilmedi veya dosya penceresi açılamadı.")
 
+    for selected_key, manual_key in (
+        ("selected_root_folder", "manual_selected_root_folder"),
+        ("selected_invoice_file", "manual_selected_invoice_file"),
+        ("selected_eno_file", "manual_selected_eno_file"),
+    ):
+        if manual_key not in st.session_state:
+            st.session_state[manual_key] = st.session_state.get(selected_key, "")
+
     with st.sidebar.expander("Dosya yollarını elle gir (isteğe bağlı)", expanded=False):
         st.caption("Dosya seçme penceresi çalışmıyorsa yolları buradan girebilirsiniz.")
         root_folder = st.text_input(
             "Dağıtım Şirketi SKF klasör yolu",
-            key="selected_root_folder",
+            key="manual_selected_root_folder",
             type="password",
             placeholder="",
         ).strip()
         invoice_file = st.text_input(
             "Bizim Kestiğimiz Faturalar Excel dosyası",
-            key="selected_invoice_file",
+            key="manual_selected_invoice_file",
             type="password",
             placeholder="",
         ).strip()
         selected_eno_file = st.text_input(
             "Kesin Liste Excel dosyası (isteğe bağlı)",
-            key="selected_eno_file",
+            key="manual_selected_eno_file",
             type="password",
             placeholder="",
             help="Boş bırakılırsa seçilen SKF ana klasöründe ve alt klasörlerinde aranır.",
         ).strip()
+    if (
+        root_folder != st.session_state.get("selected_root_folder", "")
+        or invoice_file != st.session_state.get("selected_invoice_file", "")
+        or selected_eno_file != st.session_state.get("selected_eno_file", "")
+    ):
+        clear_analysis_state()
+    st.session_state["selected_root_folder"] = root_folder
+    st.session_state["selected_invoice_file"] = invoice_file
+    st.session_state["selected_eno_file"] = selected_eno_file
     if load_eno_file_selection() != selected_eno_file:
         save_error = save_eno_file_selection(selected_eno_file)
         if save_error:
