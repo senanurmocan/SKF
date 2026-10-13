@@ -13,6 +13,16 @@ Ham fatura dosyaları, müşteri/ETSO bilgileri, ENO dosyaları ve üretilen rap
 kişisel veri veya ticari bilgi içerebildiğinden Git tarafından izlenmez. Bunları
 uygulama klasörüne ya da seçtiğiniz yerel veri klasörüne koyun.
 
+## Gizlilik ve web sürümü
+
+Genel web sayfası dosya seçmez ve veri işlemez. Tarayıcıdan Streamlit Cloud'a
+yapılacak bir dosya yüklemesi, dosya içeriğini bulut sunucusuna aktarır. Fatura
+verilerini göndermemek için web sayfasındaki yerel uygulama ZIP'ini indirin,
+bilgisayarınızda açın ve `Uygulamayi_Baslat.bat` dosyasını çalıştırın. Başlatıcı
+yerel sanal ortamı ve gerekli Python paketlerini hazırlar; portalı yalnızca
+bilgisayarınızda (`localhost`) açar. SKF klasörünüzü ve Excel dosyalarınızı bu
+yerel portalda seçin.
+
 ## Kurulum ve başlatma
 
 Depo kökünde PowerShell kullanarak:

@@ -16,6 +16,7 @@ import sys
 import warnings
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
 import pandas as pd
 import streamlit as st
@@ -61,8 +62,27 @@ _ALLOWED_PREFIXES = ('127.', '10.', '192.168.', '172.16.', '172.17.',
                      '172.26.', '172.27.', '172.28.', '172.29.',
                      '172.30.', '172.31.', '::1', 'localhost')
 
+def is_streamlit_cloud() -> bool:
+    """Detect the public Streamlit-hosted page from the browser URL/host."""
+    try:
+        url = str(st.context.url or "")
+        host = (urlsplit(url).hostname or "").casefold()
+        if not host:
+            headers = st.context.headers
+            host = str(
+                headers.get("x-forwarded-host") or headers.get("host") or ""
+            ).split(":", 1)[0].casefold()
+        return host == "streamlit.app" or host.endswith(".streamlit.app")
+    except Exception:
+        return False
+
+
 def _check_ip_whitelist():
     """Streamlit'in query params üzerinden IP kontrolü (bilgilendirme amaçlı)."""
+    # The public hosted page only provides local-run instructions; it never
+    # reads or processes user files, so it can be opened by the general public.
+    if is_streamlit_cloud():
+        return
     try:
         from streamlit.web.server.websocket_headers import _get_websocket_headers
         headers = _get_websocket_headers()
@@ -82,6 +102,7 @@ EXPECTED_REGION_COUNT = 21
 ANOMALY_MINIMUM_TL = 10_000_000.0
 ABSURD_CORRUPTION_THRESHOLD_TL = 50_000_000_000.0
 OUR_INVOICES_LABEL = "Bizim Kestiğimiz Faturalar"
+LOCAL_APP_DOWNLOAD_URL = "https://github.com/senanurmocan/SKF/archive/refs/heads/main.zip"
 
 
 
@@ -2929,6 +2950,20 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
     if logo_path.exists():
         st.sidebar.image(str(logo_path), width="stretch")
 
+    if is_streamlit_cloud():
+        st.sidebar.subheader("Gizlilik odaklı yerel kullanım")
+        st.sidebar.info(
+            "Bu genel web sayfası dosya seçmez veya fatura verisi işlemez. "
+            "Dosyalarınızı bilgisayarınızda tutmak için yerel sürümü indirin."
+        )
+        st.sidebar.link_button(
+            "Yerel uygulamayı indir (.zip)",
+            LOCAL_APP_DOWNLOAD_URL,
+            width="stretch",
+        )
+        st.sidebar.caption("ZIP içindeki Uygulamayi_Baslat.bat dosyasını çalıştırın.")
+        return "", "", None, False
+
     st.sidebar.subheader("📂 Veri Kaynağı")
     root_folder = st.session_state.get("selected_root_folder", "").strip()
     folder_button, folder_status = st.sidebar.columns([9, 1], gap="small", vertical_alignment="center")
@@ -3614,6 +3649,33 @@ def main() -> None:
     initialize_session_state()
 
     root_folder, invoice_file, mapping_path, run_button = render_sidebar()
+
+    if is_streamlit_cloud():
+        st.markdown('<div class="ck-title">⚡ CK Enerji EDAŞ Fatura Veri Portalı</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="ck-subtitle">Dosyalarınızı bilgisayarınızda tutarak güvenli biçimde işleyin.</div>',
+            unsafe_allow_html=True,
+        )
+        st.warning(
+            "Gizlilik nedeniyle bu genel web sürümünde dosya seçimi ve veri işleme kapalıdır. "
+            "Bu sayfa fatura dosyalarınızı almaz veya sunucuya göndermez."
+        )
+        st.markdown("### Yerel sürümü başlatma")
+        st.markdown(
+            "1. **Yerel uygulamayı indir (.zip)** düğmesiyle kaynak paketini alın.\n"
+            "2. ZIP dosyasını bilgisayarınıza çıkarın.\n"
+            "3. `Uygulamayi_Baslat.bat` dosyasına çift tıklayın.\n"
+            "4. Açılan yerel portalda SKF klasörünü ve Excel dosyalarını seçin."
+        )
+        st.caption(
+            "Yerel portal yalnızca bu bilgisayarda açılır; kaynak faturalar Streamlit Cloud'a yüklenmez."
+        )
+        st.link_button(
+            "Windows için yerel uygulamayı indir",
+            LOCAL_APP_DOWNLOAD_URL,
+            type="primary",
+        )
+        return
 
     header_left, header_right = st.columns([4, 2], gap="small", vertical_alignment="top")
     with header_left:
