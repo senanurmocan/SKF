@@ -455,9 +455,72 @@ def inject_corporate_css() -> None:
         [data-testid="stSidebar"] {
             background: var(--ck-sidebar);
             border-right: 1px solid var(--ck-border);
+            box-shadow: 5px 0 24px rgba(38, 52, 71, .035);
         }
-        [data-testid="stSidebar"] > div:first-child { padding: 1.2rem 1rem 1.6rem; }
-        [data-testid="stSidebar"] [data-testid="stImage"] { margin: .1rem 0 1.1rem; }
+        [data-testid="stSidebar"] > div:first-child { padding: 1rem .9rem 1.35rem; }
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .72rem; }
+        [data-testid="stSidebar"] [data-testid="stImage"] {
+            margin: .1rem 0 .7rem;
+            padding: .85rem 1rem;
+            background: var(--ck-surface);
+            border: 1px solid var(--ck-border);
+            border-radius: 15px;
+            box-shadow: var(--ck-shadow);
+        }
+        [data-testid="stSidebar"] h3 {
+            color: var(--ck-text);
+            font-size: 1.08rem;
+            font-weight: 740;
+            letter-spacing: -.02em;
+            margin: .15rem 0 .15rem;
+            padding: 0 0 .55rem .65rem;
+            border-bottom: 1px solid var(--ck-border);
+            border-left: 3px solid var(--ck-orange);
+        }
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+            color: var(--ck-muted);
+            font-size: .78rem;
+            font-weight: 590;
+            line-height: 1.35;
+            margin-bottom: .3rem;
+        }
+        [data-testid="stSidebar"] [data-testid="stTextInput"] input {
+            min-height: 2.55rem;
+            padding: .55rem .75rem;
+            box-shadow: inset 0 1px 2px rgba(38, 52, 71, .035);
+        }
+        [data-testid="stSidebar"] [data-testid="stTextInput"] input:focus {
+            border-color: var(--ck-blue);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--ck-blue) 16%, transparent);
+        }
+        [data-testid="stSidebar"] div.stButton > button {
+            min-height: 2.55rem;
+            border-radius: 11px;
+            padding: .45rem .8rem;
+            text-align: left;
+        }
+        [data-testid="stSidebar"] div.stButton > button[kind="primary"] {
+            min-height: 2.75rem;
+            text-align: center;
+            box-shadow: 0 5px 13px rgba(48, 84, 150, .2);
+        }
+        [data-testid="stSidebar"] div.stButton > button:disabled {
+            box-shadow: none;
+            opacity: .58;
+            transform: none;
+        }
+        [data-testid="stSidebar"] [data-testid="stAlert"] {
+            padding: .55rem .7rem;
+            border-radius: 11px;
+        }
+        [data-testid="stSidebar"] [data-testid="stAlert"] p {
+            font-size: .79rem;
+            line-height: 1.45;
+        }
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+            font-size: .77rem;
+            line-height: 1.45;
+        }
         .ck-title {
             position: relative;
             color: var(--ck-blue);
