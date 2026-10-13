@@ -2746,25 +2746,6 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
         ("KDV (TL)", "KDV"),
         ("Toplam (TL)", "Toplam (TL)"),
     ]
-    # The detail Reaktif total includes the tenzil values for these regions;
-    # the separate İlk Reaktif column repeats that component for reference.
-    reactive_total_includes_first_reactive = {
-        normalize_region_name(region_name, to_format="reference")
-        for region_name in (
-            "Akdeniz EDAŞ",
-            "AYEDAŞ",
-            "Başkent EDAŞ",
-            "Boğaziçi EDAŞ",
-            "Çamlıbel EDAŞ",
-            "Kayseri EDAŞ",
-            "Osmangazi EDAŞ",
-            "Sakarya EDAŞ",
-            "Toroslar EDAŞ",
-            "Yeşilırmak EDAŞ",
-            "AKEDAŞ (Göksu EDAŞ)",
-        )
-    }
-
     company_first_rows: dict[str, tuple[int, bool]] = {}
     for row_index, record in enumerate(records, start=2):
         company_value = record.get("Dağıtım Bölgesi")
@@ -2786,10 +2767,6 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
     }
     company_column = source_columns["Dağıtım Bölgesi"]
     company_letter = detail_sheet.cell(1, company_column).column_letter
-    first_reactive_column = source_columns.get(
-        "İlk Reaktif Bedeli (TL)",
-        source_columns.get("İlk Reaktif"),
-    )
     last_detail_row = max(detail_sheet.max_row, 2)
     detail_name = "'Dağıtımın Kestiği'"
     company_range = f"{detail_name}!${company_letter}$2:${company_letter}${last_detail_row}"
@@ -2806,12 +2783,6 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
     number_format = '#,##0.00;[Red]-#,##0.00;"-"'
     for company, (source_row, is_unknown_company) in company_first_rows.items():
         row_index = summary_sheet.max_row + 1
-        normalized_company = normalize_region_name(company, to_format="reference")
-        subtract_first_reactive = (
-            not is_unknown_company
-            and normalized_company in reactive_total_includes_first_reactive
-            and first_reactive_column is not None
-        )
         company_source_cell = f"{detail_name}!${company_letter}${source_row}"
         summary_sheet.cell(
             row_index,
@@ -2820,7 +2791,8 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
         )
         summary_sheet.cell(row_index, 1).alignment = Alignment(vertical="center")
         for column_index, (_, source_field) in enumerate(summary_fields, start=2):
-            source_column = source_columns[source_field]
+            # Reaktif toplamı yalnızca Dağıtımın Kestiği sayfasındaki M sütunundan alınır.
+            source_column = 13 if source_field == "Reaktif Bedel (TL)" else source_columns[source_field]
             source_letter = detail_sheet.cell(1, source_column).column_letter
             sum_range = f"{detail_name}!${source_letter}$2:${source_letter}${last_detail_row}"
             sum_formula = f"SUMIF({company_range},$A{row_index},{sum_range})"
@@ -2831,15 +2803,6 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
                 cell.value = f'=SUMIF({company_range},"",{sum_range})+SUMIF({company_range},"nan",{sum_range})'
             else:
                 cell.value = f"={sum_formula}"
-                if source_field == "Reaktif Bedel (TL)" and subtract_first_reactive:
-                    first_reactive_letter = detail_sheet.cell(1, first_reactive_column).column_letter
-                    first_reactive_range = (
-                        f"{detail_name}!${first_reactive_letter}$2:${first_reactive_letter}${last_detail_row}"
-                    )
-                    first_reactive_sum = (
-                        f"SUMIF({company_range},$A{row_index},{first_reactive_range})"
-                    )
-                    cell.value = f"={sum_formula}-{first_reactive_sum}"
             cell.number_format = number_format
             cell.alignment = Alignment(horizontal="right", vertical="center")
 
