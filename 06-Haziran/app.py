@@ -43,6 +43,7 @@ from extract_and_compare import (  # noqa: E402
     process_all_regions,
     save_to_excel,
 )
+from core.internal_server import configured_directory, safe_directories, safe_excel_files
 
 
 st.set_page_config(
@@ -52,10 +53,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── LAN Güvenliği: IP Whitelist ──────────────────────────────────────────
-# Yalnız özel ağ (private network) IP'lerinden erişime izin verir.
-# Bu kontrol, sunucu 0.0.0.0 ile LAN'a açıldığında aktif olur.
-# KVKK uyumluluğu için ETSO verilerine dış ağlardan erişim engellenir.
+# Yerel geliştirme modunda özel ağ IP'lerinden erişime izin verilir.
+# Şirket içi sunucu modunda erişimi IIS Windows Authentication ve AD grubu sınırlar.
 _ALLOWED_PREFIXES = ('127.', '10.', '192.168.', '172.16.', '172.17.',
                      '172.18.', '172.19.', '172.20.', '172.21.',
                      '172.22.', '172.23.', '172.24.', '172.25.',
@@ -77,11 +76,36 @@ def is_streamlit_cloud() -> bool:
         return False
 
 
+def _request_host() -> str:
+    """Return the browser-facing hostname, including when behind a proxy."""
+    try:
+        url = str(st.context.url or "")
+        host = (urlsplit(url).hostname or "").casefold()
+        if host:
+            return host
+        headers = st.context.headers
+        forwarded_host = headers.get("x-forwarded-host") or headers.get("host") or ""
+        return str(forwarded_host).split(":", 1)[0].casefold()
+    except Exception:
+        return ""
+
+
+def is_internal_server_mode() -> bool:
+    """Treat every non-local, non-Streamlit-Cloud request as remote access."""
+    if os.environ.get("SKF_INTERNAL_SERVER", "").strip() == "1":
+        return True
+    if is_streamlit_cloud():
+        return False
+    host = _request_host()
+    return bool(host and host not in {"localhost", "127.0.0.1", "::1"}
+                and not host.startswith("127."))
+
+
 def _check_ip_whitelist():
     """Streamlit'in query params üzerinden IP kontrolü (bilgilendirme amaçlı)."""
     # The public hosted page only provides local-run instructions; it never
     # reads or processes user files, so it can be opened by the general public.
-    if is_streamlit_cloud():
+    if is_streamlit_cloud() or is_internal_server_mode():
         return
     try:
         from streamlit.web.server.websocket_headers import _get_websocket_headers
@@ -1024,9 +1048,13 @@ def initialize_session_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = value
     if "selected_system_usage_file" not in st.session_state:
-        st.session_state["selected_system_usage_file"] = load_system_usage_file_selection()
+        st.session_state["selected_system_usage_file"] = (
+            "" if is_internal_server_mode() else load_system_usage_file_selection()
+        )
     if "selected_eno_file" not in st.session_state:
-        st.session_state["selected_eno_file"] = load_eno_file_selection()
+        st.session_state["selected_eno_file"] = (
+            "" if is_internal_server_mode() else load_eno_file_selection()
+        )
 
 
 def load_system_usage_file_selection() -> str:
@@ -2737,11 +2765,14 @@ def run_analysis_pipeline(
         output_buffer = io.BytesIO()
         save_to_excel(normalized_records, output_buffer)
         output_bytes = add_summary_worksheet(output_buffer.getvalue(), normalized_records)
+        selected_system_usage_file = system_usage_file
+        if not selected_system_usage_file and not is_internal_server_mode():
+            selected_system_usage_file = str(SYSTEM_USAGE_FILE_DEFAULT)
         output_bytes, invoice_sources, invoice_file_errors, invoice_file_count = append_selected_invoice_file(
             output_bytes,
             invoice_file,
             mapping_path=mapping_path,
-            system_usage_file=system_usage_file,
+            system_usage_file=selected_system_usage_file,
         )
         if invoice_file and (invoice_file_count != 1 or not invoice_sources) and not invoice_file_errors:
             invoice_file_errors.append(
@@ -2945,6 +2976,164 @@ def render_selection_check(container: Any, is_selected: bool) -> None:
         container.empty()
 
 
+def _select_server_directory(label: str, setting_name: str, state_key: str, widget_key: str) -> str:
+    configured_root, _configuration_error = configured_directory(setting_name)
+    if configured_root is None:
+        _set_server_selection(state_key, "")
+        st.sidebar.error(
+            f"Sunucu klasörü yapılandırılmamış veya erişilemiyor ({setting_name})."
+        )
+        return ""
+
+    choices = safe_directories(configured_root)
+    if not choices:
+        _set_server_selection(state_key, "")
+        st.sidebar.warning(
+            f"Yapılandırılmış klasörde seçilebilir alt klasör yok ({setting_name})."
+        )
+        return ""
+
+    previous = st.session_state.get(state_key, "")
+    previous_index = next(
+        (index for index, path in enumerate(choices) if str(path) == previous),
+        0,
+    )
+    selected_index = st.sidebar.selectbox(
+        label,
+        options=list(range(len(choices))),
+        index=previous_index,
+        format_func=lambda index: choices[index].name,
+        key=widget_key,
+    )
+    selected_path = str(choices[selected_index])
+    _set_server_selection(state_key, selected_path)
+    return selected_path
+
+
+def _set_server_selection(state_key: str, selected_path: str) -> None:
+    previous = st.session_state.get(state_key, "")
+    if selected_path != previous:
+        clear_analysis_state()
+    st.session_state[state_key] = selected_path
+
+
+def _select_server_excel_file(
+    container: Any,
+    label: str,
+    setting_name: str,
+    state_key: str,
+    widget_key: str,
+    *,
+    optional: bool = True,
+) -> str:
+    configured_root, configuration_error = configured_directory(setting_name)
+    if configured_root is None:
+        _set_server_selection(state_key, "")
+        if not optional or configuration_error == "unavailable":
+            container.warning(
+                f"Sunucu dosya klasörü yapılandırılmamış veya erişilemiyor ({setting_name})."
+            )
+        return ""
+
+    files = safe_excel_files(configured_root)
+    if not files:
+        _set_server_selection(state_key, "")
+        container.warning(
+            f"Yapılandırılmış klasörde Excel dosyası bulunamadı ({setting_name})."
+        )
+        return ""
+
+    previous = st.session_state.get(state_key, "")
+    previous_index = next(
+        (index for index, path in enumerate(files) if str(path) == previous),
+        -1,
+    )
+    options = [-1, *range(len(files))] if optional else list(range(len(files)))
+    selected_option = -1 if previous_index < 0 and optional else max(previous_index, 0)
+    selected_index = container.selectbox(
+        label,
+        options=options,
+        index=options.index(selected_option),
+        format_func=lambda index: "Seçilmedi" if index == -1 else files[index].name,
+        key=widget_key,
+    )
+    selected_path = "" if selected_index == -1 else str(files[selected_index])
+    _set_server_selection(state_key, selected_path)
+    return selected_path
+
+
+def render_internal_server_sidebar() -> tuple[str, str, str | None, bool]:
+    st.sidebar.subheader("Şirket içi veri kaynağı")
+    st.sidebar.caption(
+        "Dosyalar, yetkili sunucunun erişebildiği şirket paylaşımından okunur."
+    )
+    root_folder = _select_server_directory(
+        "Dağıtım faturaları dönemi",
+        "SKF_DATA_ROOT",
+        "selected_root_folder",
+        "server_selected_data_period",
+    )
+    invoice_file = _select_server_excel_file(
+        st.sidebar,
+        "Bizim Kestiğimiz Faturalar (isteğe bağlı)",
+        "SKF_OUR_INVOICES_ROOT",
+        "selected_invoice_file",
+        "server_selected_our_invoice",
+        optional=True,
+    )
+
+    if os.environ.get("SKF_ENO_ROOT", "").strip():
+        _select_server_excel_file(
+            st.sidebar,
+            "Kesin Liste (isteğe bağlı)",
+            "SKF_ENO_ROOT",
+            "selected_eno_file",
+            "server_selected_eno",
+            optional=True,
+        )
+        st.sidebar.caption(
+            "Kesin Liste seçilmezse dönem klasöründe otomatik aranır."
+        )
+    else:
+        _set_server_selection("selected_eno_file", "")
+        st.sidebar.caption(
+            "Kesin Liste dönem klasöründe otomatik aranır."
+        )
+
+    mapping_path = str(BASE_DIR / "SKF Başlıkları.xlsx")
+    if not os.path.isfile(mapping_path):
+        st.sidebar.error("Sistem mapping dosyası bulunamadı.")
+        mapping_path = None
+
+    selected_system_usage_file = st.session_state.get(
+        "selected_system_usage_file", ""
+    )
+    needs_system_usage = bool(invoice_file)
+    run_button = st.sidebar.button(
+        "Verileri Birleştir ve Karşılaştır",
+        type="primary",
+        width="stretch",
+        disabled=not (
+            root_folder
+            and os.path.isdir(root_folder)
+            and mapping_path
+            and (not needs_system_usage or os.path.isfile(selected_system_usage_file))
+        ),
+    )
+    if root_folder and os.path.isdir(root_folder):
+        count = count_candidate_region_folders(root_folder)
+        st.sidebar.info(
+            f"Bulunan aday bölge klasörü: {format_turkish_integer(count)} / "
+            f"{format_turkish_integer(EXPECTED_REGION_COUNT)}"
+        )
+    st.sidebar.success(
+        "İşleme şirket içi sunucuda yapılır; rapor yalnızca oturum sahibine sunulur."
+    )
+    st.sidebar.divider()
+    st.sidebar.toggle("Karanlık Mod", key="dark_mode")
+    return root_folder, invoice_file, mapping_path, run_button
+
+
 def render_sidebar() -> tuple[str, str, str | None, bool]:
     logo_path = BASE_DIR / "CK_Enerji_-_Yatay.png"
     if logo_path.exists():
@@ -2963,6 +3152,9 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         )
         st.sidebar.caption("ZIP içindeki Uygulamayi_Baslat.bat dosyasını çalıştırın.")
         return "", "", None, False
+
+    if is_internal_server_mode():
+        return render_internal_server_sidebar()
 
     st.sidebar.subheader("📂 Veri Kaynağı")
     root_folder = st.session_state.get("selected_root_folder", "").strip()
@@ -3140,6 +3332,17 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
 
 
 def render_system_usage_file_picker() -> None:
+    if is_internal_server_mode():
+        _select_server_excel_file(
+            st,
+            "Sistem Kullanım Bedelleri dosyası",
+            "SKF_SYSTEM_USAGE_ROOT",
+            "selected_system_usage_file",
+            "server_selected_system_usage",
+            optional=False,
+        )
+        return
+
     selected_file = st.session_state.get("selected_system_usage_file", "")
     spacer, label_column, button_column, status_column = st.columns(
         [4, 2.8, 1.1, 0.8],
