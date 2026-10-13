@@ -2681,6 +2681,95 @@ def _load_eno_lookups(eno_path):
     return sayac_id_to_eic, eic_to_abone
 
 
+def _merge_eno_collisions(records, converted_record_ids, direct_eic_record_ids):
+    """Merge rows that acquired the same EIC only after ENO conversion.
+
+    Exact duplicate numeric rows count once; distinct row totals are combined.
+    The direct EIC row supplies the preferred category values.
+    """
+    from collections import OrderedDict
+    import math
+
+    grouped = OrderedDict()
+    for record in records:
+        region = normalize_region_name(
+            record.get('Dağıtım Bölgesi'), to_format='reference'
+        ) or ''
+        etso = record.get('Etso Kodu', '')
+        etso_key = normalize_etso_kodu(etso) or str(etso or '').strip()
+        grouped.setdefault((region, etso_key), []).append(record)
+
+    metric_fields = list(dict.fromkeys([*SUM_FIELDS, *EXTENDED_SUM_FIELDS]))
+    text_fields = list(dict.fromkeys([
+        *TEXT_FIELDS_AGG,
+        'Müşteri',
+        "Sayax'a Atılacak Tarife",
+    ]))
+
+    def number(value):
+        if isinstance(value, str) and value.strip().upper() == 'X':
+            return 0.0
+        try:
+            parsed = float(value or 0)
+            return parsed if math.isfinite(parsed) else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def has_text(value):
+        return value is not None and str(value).strip().casefold() not in {
+            '', 'none', 'null', 'nan', 'boş',
+        }
+
+    merged_records = []
+    merged_count = 0
+    for group in grouped.values():
+        if len(group) < 2 or not any(id(row) in converted_record_ids for row in group):
+            merged_records.extend(group)
+            continue
+
+        # Keep optional output columns optional when this group does not use them.
+        sum_fields = [field for field in metric_fields if any(field in row for row in group)]
+
+        def quality(row):
+            return (
+                id(row) in direct_eic_record_ids,
+                sum(has_text(row.get(field)) for field in text_fields),
+                sum(abs(number(row.get(field))) > 1e-9 for field in sum_fields),
+            )
+
+        preferred_rows = sorted(group, key=quality, reverse=True)
+        merged = preferred_rows[0].copy()
+        totals = {field: 0.0 for field in sum_fields}
+        seen_vectors = set()
+        for row in group:
+            values = tuple(number(row.get(field)) for field in sum_fields)
+            signature = tuple(round(value, 8) for value in values)
+            if signature in seen_vectors:
+                continue
+            seen_vectors.add(signature)
+            for field, value in zip(sum_fields, values):
+                totals[field] += value
+        merged.update(totals)
+
+        for field in MAX_FIELDS:
+            values = [number(row.get(field)) for row in group if has_text(row.get(field))]
+            if values:
+                merged[field] = max(values)
+
+        for field in text_fields:
+            if not has_text(merged.get(field)):
+                merged[field] = next(
+                    (row.get(field) for row in preferred_rows if has_text(row.get(field))),
+                    merged.get(field),
+                )
+
+        merged_records.append(merged)
+        merged_count += len(group) - 1
+
+    records[:] = merged_records
+    return merged_count
+
+
 def enrich_from_eno_file(records, base_path, eno_file_path=None):
     """Çıktı kayıtlarını ENO dosyasından zenginleştir:
     
@@ -2714,6 +2803,14 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
     if not sayac_id_to_eic and not eic_to_abone:
         print("[ENO] Lookup tabloları boş, zenginleştirme yapılamadı")
         return stats
+
+    direct_eic_record_ids = {
+        id(record)
+        for record in records
+        if str(record.get('Etso Kodu') or '').strip().upper().startswith('40Z')
+        and len(str(record.get('Etso Kodu') or '').strip()) >= 16
+    }
+    converted_record_ids = set()
     
     # ADIM 1: ETSO Kodu dönüşümü (Sayaç ID → EIC Kod)
     for record in records:
@@ -2739,6 +2836,7 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
             new_etso = sayac_id_to_eic[lookup_key]
             record['Etso Kodu'] = new_etso
             stats['etso_converted'] += 1
+            converted_record_ids.add(id(record))
     
     # ADIM 2: Boş Müşteri doldurma (EIC Kod → Abone Ad-Soyad)
     for record in records:
@@ -2754,8 +2852,20 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
         if etso_str in eic_to_abone:
             record['Müşteri'] = eic_to_abone[etso_str]
             stats['musteri_filled'] += 1
+
+    stats['duplicate_eic_rows_merged'] = _merge_eno_collisions(
+        records,
+        converted_record_ids,
+        direct_eic_record_ids,
+    )
+    stats['total_records'] = len(records)
     
     print(f"  [ENO] ETSO dönüştürülen: {stats['etso_converted']}, Müşteri doldurulan: {stats['musteri_filled']}")
+    if stats['duplicate_eic_rows_merged']:
+        print(
+            "  [ENO] Eşleşen doğrudan ETSO/kimlik kayıtları tek satırda birleştirildi: "
+            f"{stats['duplicate_eic_rows_merged']}"
+        )
     return stats
 
 
