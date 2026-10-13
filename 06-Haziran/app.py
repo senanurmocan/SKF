@@ -457,7 +457,7 @@ def inject_corporate_css() -> None:
             border-right: 1px solid var(--ck-border);
             box-shadow: 5px 0 24px rgba(38, 52, 71, .035);
         }
-        [data-testid="stSidebar"] > div:first-child { padding: 1rem .9rem 1.35rem; }
+        [data-testid="stSidebar"] > div:first-child { padding: .35rem .9rem 1.35rem; }
         [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .72rem; }
         [data-testid="stSidebar"] [data-testid="stImage"] {
             margin: .1rem 0 .7rem;
@@ -468,14 +468,25 @@ def inject_corporate_css() -> None:
             box-shadow: var(--ck-shadow);
         }
         [data-testid="stSidebar"] h3 {
+            position: relative;
             color: var(--ck-text);
             font-size: 1.08rem;
             font-weight: 740;
             letter-spacing: -.02em;
-            margin: .15rem 0 .15rem;
-            padding: 0 0 .55rem .65rem;
+            text-align: center;
+            margin: .15rem 0 .6rem;
+            padding: 0 0 .65rem;
             border-bottom: 1px solid var(--ck-border);
-            border-left: 3px solid var(--ck-orange);
+        }
+        [data-testid="stSidebar"] h3::after {
+            position: absolute;
+            bottom: -1px;
+            left: calc(50% - 18px);
+            width: 36px;
+            height: 3px;
+            border-radius: 3px;
+            background: var(--ck-orange);
+            content: "";
         }
         [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
             color: var(--ck-muted);
@@ -520,6 +531,11 @@ def inject_corporate_css() -> None:
         [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
             font-size: .77rem;
             line-height: 1.45;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary {
+            color: var(--ck-muted);
+            font-size: .78rem;
+            font-weight: 650;
         }
         .ck-title {
             position: relative;
@@ -2934,14 +2950,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
             st.session_state["selected_root_folder"] = selected_folder
             st.rerun()
         else:
-            st.sidebar.info("Klasör seçilmedi veya pencere açılamadı. SKF dizin yolunu aşağıya yazabilirsiniz.")
-
-    root_folder = st.sidebar.text_input(
-        "Dağıtım Şirketi SKF klasör yolu",
-        key="selected_root_folder",
-        type="password",
-        placeholder="",
-    ).strip()
+            st.sidebar.info("Klasör seçilmedi veya pencere açılamadı. Dosya yollarını elle girebilirsiniz.")
 
     invoice_button, invoice_status = st.sidebar.columns([9, 1], gap="small", vertical_alignment="center")
     with invoice_button:
@@ -2965,18 +2974,11 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         else:
             st.sidebar.info("Excel dosyası seçilmedi veya dosya penceresi açılamadı. Dosya yolunu aşağıya yazabilirsiniz.")
 
-    invoice_file = st.sidebar.text_input(
-        "Bizim Kestiğimiz Faturalar Excel dosyası",
-        key="selected_invoice_file",
-        type="password",
-        placeholder="",
-    ).strip()
-
     selected_eno_file = st.session_state.get("selected_eno_file", "")
     eno_button, eno_status = st.sidebar.columns([9, 1], gap="small", vertical_alignment="center")
     with eno_button:
         select_eno = st.button(
-            "📄 Kesin Liste",
+            "📄 Kesin Liste (isteğe bağlı)",
             width="stretch",
             key="select_eno_file",
             help="Sayaç ID → EIC ve müşteri eşleştirmesi için Kesin Liste Excel dosyasını seçin.",
@@ -2986,6 +2988,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
             eno_status,
             bool(selected_eno_file and os.path.isfile(selected_eno_file)),
         )
+    st.sidebar.caption("Kesin Liste seçilmezse SKF klasörünün içinde otomatik aranır.")
 
     if select_eno:
         new_eno_file = select_excel_file_via_dialog(
@@ -3009,13 +3012,27 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         else:
             st.sidebar.info("Kesin Liste dosyası seçilmedi veya dosya penceresi açılamadı.")
 
-    selected_eno_file = st.sidebar.text_input(
-        "Kesin Liste Excel dosyası (isteğe bağlı)",
-        key="selected_eno_file",
-        type="password",
-        placeholder="",
-        help="Boş bırakılırsa seçilen SKF ana klasöründe ve alt klasörlerinde aranır.",
-    ).strip()
+    with st.sidebar.expander("Dosya yollarını elle gir (isteğe bağlı)", expanded=False):
+        st.caption("Dosya seçme penceresi çalışmıyorsa yolları buradan girebilirsiniz.")
+        root_folder = st.text_input(
+            "Dağıtım Şirketi SKF klasör yolu",
+            key="selected_root_folder",
+            type="password",
+            placeholder="",
+        ).strip()
+        invoice_file = st.text_input(
+            "Bizim Kestiğimiz Faturalar Excel dosyası",
+            key="selected_invoice_file",
+            type="password",
+            placeholder="",
+        ).strip()
+        selected_eno_file = st.text_input(
+            "Kesin Liste Excel dosyası (isteğe bağlı)",
+            key="selected_eno_file",
+            type="password",
+            placeholder="",
+            help="Boş bırakılırsa seçilen SKF ana klasöründe ve alt klasörlerinde aranır.",
+        ).strip()
     if load_eno_file_selection() != selected_eno_file:
         save_error = save_eno_file_selection(selected_eno_file)
         if save_error:
@@ -3026,7 +3043,6 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         st.sidebar.error("Seçilen Kesin Liste dosyası bulunamadı.")
         valid_eno_file = False
     else:
-        st.sidebar.caption("Kesin Liste seçilmezse SKF klasörünün içinde otomatik aranır.")
         valid_eno_file = True
 
     # Mapping dosyası sabittir: kodlarla aynı dizindeki 'SKF Başlıkları.xlsx'
