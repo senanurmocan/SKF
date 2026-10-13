@@ -79,7 +79,8 @@ DİNAMİK BAŞLIK ÇÖZÜMLEME ÖNCELİĞİ
 ---------------------------------
 ``resolve_column_indices`` her gerçek kaynak başlığında şu sırayı kullanır:
 
-1. Mapping 7 Çamlıbel zorunlu sabit indeks kuralı.
+1. Çamlıbel'de yinelenen Tarife başlıkları, altlarındaki değerlerin düzeltme
+   tablolarıyla eşleşmesine göre çözülür; üç metin alanı aynı sütunu kullanır.
 2. ``SPECIAL_HEADER_MAPPING`` bölgesel karşılığı.
 3. Mappingdeki gerçek kaynak başlığının normalize edilmiş eşleşmesi.
 4. Mappingdeki sabit sütun indeksi.
@@ -137,9 +138,10 @@ REAKTİF VE İLK REAKTİF KURALLARI
 
 MAPPING 7 YENİ İŞ KURALLARI
 ---------------------------
-1. **Çamlıbel AV:** Notlar 7 aktifken Tarife Grubu, AG OG ve Terim başlık adıyla
-   ilk eşleşmeden değil, zorunlu AV / zero-based index 47 kaynağından okunur.
-   Bu kural Mapping 6'ya taşmaz.
+1. **Çamlıbel:** Tarife Grubu, AG OG ve Terim aynı kaynak sütunundan alınır.
+   Yinelenen Tarife başlıkları, başlık altındaki örnek değerlerin Düzeltme
+   tablosundaki üç alanla eşleşmesiyle seçilir; konum değişince sabit sütun
+   harfine bağlı kalınmaz.
 2. **Tazminat:** Bölge için tanımlı ``Tazminat Bedeli-1..3`` kaynaklarının
    tamamı ham satırda toplanır; ETSO+bölge agregasyonunda tekrar SUM edilir;
    nihai ``Tazminat Bedeli`` her zaman en son sütundur.
@@ -177,8 +179,9 @@ BÖLGESEL GOLDEN POST-PROCESS
 
 SATIR FİLTRELEME VE EŞİKLER
 ---------------------------
-1. ETSO veya müşteri hücresinde bilinen başlık metni taşıyan tekrarlı alt
-   başlık satırları atılır.
+1. ETSO, müşteri, Tarife, AG/OG veya Terim hücresinde bilinen başlık metni
+   taşıyan tekrarlı alt başlık satırları atılır; alt çizgi ve Türkçe karakter
+   farkları normalize edilir.
 2. Yalnız **pozitif** ``Dağıtım Bedeli(TL) > 10_000_000_000`` bozuk/absürt
    sayılır ve atılır. ``abs`` kullanılmaz.
 3. Negatif dağıtım bedelleri kural gereği KORUNUR ve ``negative_count``
@@ -240,7 +243,7 @@ Varsayılan dönüş ``list[dict]``; ``return_stats=True`` dönüşü
 ``merged_duplicates``, ``discovered_files``, ``processed_files``,
 ``file_errors``, ``per_region_records``, ``notes_sheet``,
 ``mapping_features``, ``mapping_warnings``, ``source_header_warnings``,
-``correction_duplicates``,
+``correction_duplicates``, ``category_validation_warnings``,
 ``correction_counts``, ``correction_total``, ``correction_examples``,
 ``standart_disi_total`` ve ``tazminat_total``.
 
@@ -273,7 +276,8 @@ Kaynak veri değişmediği sürece beklenen golden ölçüler:
   ``e6da5dbabc265e173b08d4a1ba90ff3a9546f8f6276f1533db5db5acea4fc9d3``.
 
 Şunlar regresyonsuz değiştirilmemelidir: negatiflerin korunması; ETSO+bölge
-grubu; SUM/MAX/TEXT ayrımı; Çamlıbel AV'nin yalnız Mapping 7'de olması; dört
+grubu; SUM/MAX/TEXT ayrımı; Çamlıbel kategori alanlarının başlık ve içerikle
+çözülmesi; dört
 bölgenin base-only reaktif kuralı; post-process'in Düzeltme'den önce olması;
 18/20 kolon koşulu; N/O/P formülleri; ``Standar`` yazımı ve maskesiz Excel.
 
@@ -652,8 +656,12 @@ def read_xml_content(
         if not headers or not any(h is not None and str(h).strip() for h in headers):
             continue
 
-        # Sütun indekslerini dinamik resolver ile çözümler
-        indices = resolve_column_indices(headers, region_mapping)
+        # Başlık çakışmalarında kaynak alanı, başlığın altındaki örnek değerlerle seç.
+        sample_rows = [
+            _xml_row_values(row, ns)
+            for row in rows[header_row_index + 1:header_row_index + 21]
+        ]
+        indices = resolve_column_indices(headers, region_mapping, sample_rows=sample_rows)
         etso_idx = indices['etso']
         # Notlar 12 #3: Standart dışı format kontrolü
         if etso_idx < 0:
@@ -665,6 +673,8 @@ def read_xml_content(
                     f"{source_name or 'Kaynak'} / {worksheet_name or 'Sayfa'}",
                     warning_collector,
                     header_row_number=header_row_index + 1,
+                    sample_rows=sample_rows,
+                    resolved_indices=indices,
                 )
             print(f"  [UYARI] {region_name}: ETSO sütunu bulunamadı – standart dışı format, atlanıyor")
             continue
@@ -676,6 +686,8 @@ def read_xml_content(
                 f"{source_name or 'Kaynak'} / {worksheet_name or 'Sayfa'}",
                 warning_collector,
                 header_row_number=header_row_index + 1,
+                sample_rows=sample_rows,
+                resolved_indices=indices,
             )
         musteri_idx = indices['musteri']
         tarife_idx = indices['tarife']
@@ -695,6 +707,7 @@ def read_xml_content(
         reaktif_fields, ilk_reaktif_fields = resolve_reactive_field_groups(
             region_mapping, region_name
         )
+        from core.reactive_calculator import calculate_reactive_totals
 
         # Veri satırlarını işle (header_row_index'den sonraki satırlar)
         for row in rows[header_row_index + 1:]:
@@ -704,7 +717,6 @@ def read_xml_content(
                 continue
 
             # Reaktif ve İlk Reaktif hesaplama — DRY: core.reactive_calculator
-            from core.reactive_calculator import calculate_reactive_totals
             reaktif_toplam, ilk_reaktif_value, sakarya_x = calculate_reactive_totals(
                 cell_values, indices, reaktif_fields, ilk_reaktif_fields, region_name
             )
@@ -786,8 +798,8 @@ def read_html_content(
     if not any(h is not None and str(h).strip() for h in headers):
         return data_rows
 
-    # Sütun indekslerini dinamik resolver ile çözümler
-    indices = resolve_column_indices(headers, region_mapping)
+    sample_rows = table[header_row_index + 1:header_row_index + 21]
+    indices = resolve_column_indices(headers, region_mapping, sample_rows=sample_rows)
     etso_idx = indices['etso']
     # Notlar 12 #3: Standart dışı format kontrolü
     if etso_idx < 0:
@@ -799,6 +811,8 @@ def read_html_content(
                 source_name or 'HTML kaynağı',
                 warning_collector,
                 header_row_number=header_row_index + 1,
+                sample_rows=sample_rows,
+                resolved_indices=indices,
             )
         print(f"  [UYARI] {region_name}: ETSO sütunu bulunamadı – standart dışı format, atlanıyor")
         return []
@@ -810,6 +824,8 @@ def read_html_content(
             source_name or 'HTML kaynağı',
             warning_collector,
             header_row_number=header_row_index + 1,
+            sample_rows=sample_rows,
+            resolved_indices=indices,
         )
     musteri_idx = indices['musteri']
     tarife_idx = indices['tarife']
@@ -829,6 +845,7 @@ def read_html_content(
     reaktif_fields, ilk_reaktif_fields = resolve_reactive_field_groups(
         region_mapping, region_name
     )
+    from core.reactive_calculator import calculate_reactive_totals
 
     # Veri satırlarını işle (header_row_index'den sonraki satırlar)
     for row in table[header_row_index + 1:]:
@@ -836,7 +853,6 @@ def read_html_content(
             continue
 
         # Reaktif ve İlk Reaktif hesaplama — DRY: core.reactive_calculator
-        from core.reactive_calculator import calculate_reactive_totals
         reaktif_toplam, ilk_reaktif_value, sakarya_x = calculate_reactive_totals(
             row, indices, reaktif_fields, ilk_reaktif_fields, region_name
         )
@@ -943,6 +959,8 @@ def collect_source_header_mismatches(
     region_name,
     source_name,
     resolved_header_shifts=None,
+    sample_rows=None,
+    resolved_indices=None,
 ):
     """Mapping'deki sütun harfi ile gerçek kaynak başlığını karşılaştır."""
     fields = [
@@ -953,7 +971,8 @@ def collect_source_header_mismatches(
         *region_mapping.get('standart_disi_fields', []),
     ]
     is_dicle_region = normalize_header(region_name) == normalize_header('Dicle EDAŞ')
-    resolved_indices = resolve_column_indices(headers, region_mapping)
+    if resolved_indices is None:
+        resolved_indices = resolve_column_indices(headers, region_mapping, sample_rows=sample_rows)
     mismatches = []
 
     for field in fields:
@@ -1031,6 +1050,8 @@ def report_source_header_mismatches(
     source_name,
     warning_collector,
     header_row_number=None,
+    sample_rows=None,
+    resolved_indices=None,
 ):
     """Uyuşmazlıkları hem konsol çıktısına hem işlem istatistiklerine ekle."""
     format_warning = None
@@ -1048,6 +1069,8 @@ def report_source_header_mismatches(
         region_name,
         source_name,
         resolved_header_shifts=resolved_header_shifts,
+        sample_rows=sample_rows,
+        resolved_indices=resolved_indices,
     )
     if not format_warning and not resolved_header_shifts:
         return
@@ -1067,15 +1090,15 @@ SPECIAL_HEADER_MAPPING = {
         'musteri': None,  # Not used for AKEDAŞ
     },
     'Çamlıbel EDAŞ': {
-        # Notlar 7 #1 & Notlar 9 #1: Tarife Grubu, AG OG ve Terim AV sütunundan (index 47) okunur
-        'tarife': 47,
-        'ag_og': 47,
-        'terim': 47,
+        # Birden çok Tarife başlığı olabilir; doğru sütun satır değerleriyle seçilir.
+        'tarife': 'Tarife',
+        'ag_og': 'Tarife',
+        'terim': 'Tarife',
     },
     'ÇAMLIBEL EDAŞ': {
-        'tarife': 47,
-        'ag_og': 47,
-        'terim': 47,
+        'tarife': 'Tarife',
+        'ag_og': 'Tarife',
+        'terim': 'Tarife',
     },
     'YEŞİLIRMAK EDAŞ': {
         'etso': 'Etso/Kullanıcı',
@@ -1204,7 +1227,7 @@ FIELD_SYNONYMS = {
 }
 
 
-def resolve_column_indices(headers, region_mapping):
+def resolve_column_indices(headers, region_mapping, sample_rows=None):
     """
     Header satırına göre sütun indekslerini dinamik olarak çözümler.
     1. Mapping dosyasında tanımlı başlık ismi eşleştirilir.
@@ -1221,8 +1244,12 @@ def resolve_column_indices(headers, region_mapping):
         if field not in fields:
             fields.append(field)
 
+    force_header_fields = set(region_mapping.get('rules', {}).get('force_header_fields', []))
     if not headers:
-        return {field: region_mapping.get(f'{field}_index', -1) for field in fields}
+        return {
+            field: -1 if field in force_header_fields else region_mapping.get(f'{field}_index', -1)
+            for field in fields
+        }
 
     normalized_headers = [normalize_header(h) for h in headers]
     resolved = {}
@@ -1251,18 +1278,69 @@ def resolve_column_indices(headers, region_mapping):
 
     norm_reg = normalize_region_name(region_mapping.get('region_name', ''), to_format='reference')
     force_fixed_fields = set(region_mapping.get('rules', {}).get('force_fixed_fields', []))
+    normalized_cambibel = normalize_header('Çamlıbel EDAŞ')
+    cambibel_category_index = -1
+
+    # Çamlıbel kaynaklarında "Tarife" başlığı birden fazla sütunda bulunabiliyor.
+    # Harfe göre sabitlemek yerine, Tarife/AG-OG/Terim düzeltme tablolarında
+    # tanımlı değerleri en yüksek oranda taşıyan başlığı seç.
+    if (
+        normalize_header(norm_reg) == normalized_cambibel
+        and sample_rows
+        and region_mapping.get('category_source_values')
+    ):
+        category_candidates = [
+            index for index, header in enumerate(headers)
+            if normalized_headers[index] == normalize_header('Tarife')
+        ]
+        source_values = region_mapping['category_source_values']
+        expected_outputs = ('Tarife Grubu', 'AG OG', 'TERİM')
+        best_score = None
+        for candidate in category_candidates:
+            matched_by_field = {field: 0 for field in expected_outputs}
+            nonempty_count = 0
+            for sample_row in sample_rows:
+                if candidate >= len(sample_row):
+                    continue
+                raw_value = sample_row[candidate]
+                if raw_value is None or not str(raw_value).strip():
+                    continue
+                nonempty_count += 1
+                value_key = normalize_correction_lookup(raw_value)
+                for output_field in expected_outputs:
+                    if value_key in source_values.get(output_field, set()):
+                        matched_by_field[output_field] += 1
+
+            match_count = sum(matched_by_field.values())
+            field_coverage = sum(value > 0 for value in matched_by_field.values())
+            match_ratio = match_count / max(1, nonempty_count * len(expected_outputs))
+            fixed_indexes = [
+                region_mapping.get(f'{field}_index', -1)
+                for field in ('tarife', 'ag_og', 'terim')
+            ]
+            distance = min(
+                (abs(candidate - index) for index in fixed_indexes if isinstance(index, int) and index >= 0),
+                default=len(headers),
+            )
+            score = (field_coverage, match_ratio, match_count, -distance)
+            if match_count and (best_score is None or score > best_score):
+                best_score = score
+                cambibel_category_index = candidate
 
     for field in fields:
         header_name = region_mapping.get(field)
         fixed_idx = region_mapping.get(f'{field}_index', -1)
         found_idx = -1
 
+        if field in force_header_fields and cambibel_category_index >= 0:
+            found_idx = cambibel_category_index
+
         known_header = KNOWN_HEADER_SEARCH_OVERRIDES.get(norm_reg, {}).get(field)
         if known_header:
             known_header_normalized = normalize_header(known_header)
             found_idx = find_header_near_mapping(known_header_normalized, fixed_idx)
 
-        # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
+        # Çamlıbel'in alanları aynı başlıktan ve satır değerlerinden çözülür.
         if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):
             found_idx = fixed_idx
 
@@ -1282,10 +1360,10 @@ def resolve_column_indices(headers, region_mapping):
             found_idx = find_header_near_mapping(norm_target, fixed_idx)
 
         # Keep established extraction behavior: use the mapped column before synonyms.
-        if found_idx == -1 and 0 <= fixed_idx < len(headers):
+        if found_idx == -1 and field not in force_header_fields and 0 <= fixed_idx < len(headers):
             found_idx = fixed_idx
 
-        if found_idx == -1:
+        if found_idx == -1 and field not in force_header_fields:
             for syn in FIELD_SYNONYMS.get(field, []):
                 if syn in normalized_headers:
                     found_idx = normalized_headers.index(syn)
@@ -1363,6 +1441,50 @@ def normalize_correction_lookup(value):
     normalized = unicodedata.normalize('NFKC', str(value)).strip()
     normalized = re.sub(r'\s+', ' ', normalized)
     return normalized.casefold()
+
+
+def canonical_tariff_category(value):
+    """Tarife Grubu alanını izin verilen üç kategoriye indirger."""
+    if value is None:
+        return ''
+    normalized = normalize_header(value)
+    if not normalized or normalized in {'bos', 'none', 'null'}:
+        return ''
+    matches = set()
+    if 'sanayi' in normalized:
+        matches.add('Sanayi')
+    if 'mesken' in normalized:
+        matches.add('Mesken')
+    if 'ticaret' in normalized:
+        matches.add('Ticarethane')
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def canonical_ag_og_category(value):
+    """AG/OG alanını AG veya OG olarak doğrular; diğer değerleri reddeder."""
+    if value is None:
+        return ''
+    normalized = normalize_header(value)
+    if not normalized or normalized in {'bos', 'none', 'null'}:
+        return ''
+    if normalized in {'ag', 'dag', 'alacakgerilim'}:
+        return 'AG'
+    if normalized in {'og', 'dog', 'ortagerilim'}:
+        return 'OG'
+    return None
+
+
+def is_source_header_or_date(value):
+    """Kaynak başlığı veya fatura zaman damgası gibi satır dışı metni tanır."""
+    if value is None:
+        return False
+    normalized = normalize_header(value)
+    if normalized in {
+        'faturatamamlanmatarihi', 'etsokod', 'tarife', 'tarifgrubu',
+        'agog', 'terim', 'terimtipi',
+    }:
+        return True
+    return bool(re.match(r'^\d{4}[-/]\d{2}[-/]\d{2}(?:\s|$)', str(value).strip()))
 
 
 def extract_value_from_row(row, column_index, field_name=None, region_name=None):
@@ -1482,20 +1604,26 @@ def read_excel_content(
                 header_scan_rows = [headers, *islice(row_iterator, 4)]
                 validation_row_index, validation_headers = find_effective_header_row(header_scan_rows)
                 validation_header_row_number = validation_row_index + 1
-                source_rows = chain(header_scan_rows[1:], row_iterator)
+                headers = validation_headers
+                source_rows = chain(header_scan_rows[validation_row_index + 1:], row_iterator)
             else:
                 source_rows = row_iterator
 
+            sample_rows = list(islice(source_rows, 20))
+            source_rows = chain(sample_rows, source_rows)
+
             # Sütun indekslerini dinamik resolver ile çözümler
             active_mapping = region_mapping
-            indices = resolve_column_indices(headers, active_mapping)
+            indices = resolve_column_indices(headers, active_mapping, sample_rows=sample_rows)
 
             # Çift format algılama (Notlar 12 #2): Başlık ismine göre dinamik
             # eşleştir, sabit sütun harfine güvenme. Birincil mapping'in eşleşme
             # kalitesini alternatif ile karşılaştır ve daha iyi olanı seç.
             if alt_region_mapping:
                 primary_score = sum(1 for v in indices.values() if v >= 0)
-                alt_indices = resolve_column_indices(headers, alt_region_mapping)
+                alt_indices = resolve_column_indices(
+                    headers, alt_region_mapping, sample_rows=sample_rows
+                )
                 alt_score = sum(1 for v in alt_indices.values() if v >= 0)
                 
                 if alt_score > primary_score:
@@ -1517,6 +1645,8 @@ def read_excel_content(
                         f"{source_name or 'Excel kaynağı'} / {sheet_name}",
                         warning_collector,
                         header_row_number=validation_header_row_number,
+                        sample_rows=sample_rows,
+                        resolved_indices=indices,
                     )
                 print(f"  [UYARI] {region_name} / {sheet_name}: ETSO sütunu bulunamadı – "
                       f"standart dışı format, atlanıyor")
@@ -1529,6 +1659,8 @@ def read_excel_content(
                     f"{source_name or 'Excel kaynağı'} / {sheet_name}",
                     warning_collector,
                     header_row_number=validation_header_row_number,
+                    sample_rows=sample_rows,
+                    resolved_indices=indices,
                 )
             musteri_idx = indices['musteri']
             tarife_idx = indices['tarife']
@@ -1549,6 +1681,27 @@ def read_excel_content(
             reaktif_fields, ilk_reaktif_fields = resolve_reactive_field_groups(
                 region_mapping, region_name
             )
+            from core.reactive_calculator import calculate_reactive_totals
+
+            acma_kesme_idx = (
+                find_column_index(
+                    headers,
+                    ['Enerji_Acma_Kesme_Bedeli', 'acmakesmebedeli', 'kesmebedeli'],
+                    region=region_name,
+                )
+                if norm_rn == 'Akdeniz EDAŞ'
+                else -1
+            )
+            fatura_turu_idx = find_column_index(
+                headers,
+                ['faturaturu', 'fatura_turu', 'tahakkuk_turu'],
+                region=region_name,
+            )
+            fatura_no_idx = find_column_index(
+                headers,
+                ['faturano', 'fatura_no', 'tedarikcifaturano'],
+                region=region_name,
+            )
 
             # Veri satırlarını işle
             for row in source_rows:
@@ -1556,7 +1709,6 @@ def read_excel_content(
                     continue
 
                 # Reaktif ve İlk Reaktif hesaplama — DRY: core.reactive_calculator
-                from core.reactive_calculator import calculate_reactive_totals
                 reactive_total, ilk_reaktif_value, sakarya_x = calculate_reactive_totals(
                     row, indices, reaktif_fields, ilk_reaktif_fields, region_name
                 )
@@ -1566,9 +1718,6 @@ def read_excel_content(
                 aktif_val = extract_value_from_row(row, aktif_idx, field_name='aktif_enerji', region_name=region_name)
                 trafo_val = extract_value_from_row(row, trafo_kaybi_idx, field_name='trafo_kaybı', region_name=region_name)
                 dagitim_val = extract_value_from_row(row, dagitim_idx, field_name='dagitim_bedeli', region_name=region_name)
-                acma_kesme_idx = -1
-                if norm_rn == 'Akdeniz EDAŞ':
-                    acma_kesme_idx = find_column_index(headers, ['Enerji_Acma_Kesme_Bedeli', 'acmakesmebedeli', 'kesmebedeli'], region=region_name)
                 if acma_kesme_idx >= 0 and acma_kesme_idx < len(row):
                     ak_val = clean_turkish_number(row[acma_kesme_idx], region_name=region_name, field_name='dagitim_bedeli')
                     if ak_val:
@@ -1580,8 +1729,6 @@ def read_excel_content(
                 guc_bedeli_val = extract_value_from_row(row, guc_bedeli_idx, field_name='güç_bedeli', region_name=region_name)
                 guc_asim_val = extract_value_from_row(row, guc_asim_idx, field_name='güç_aşım', region_name=region_name)
 
-                fatura_turu_idx = find_column_index(headers, ['faturaturu', 'fatura_turu', 'tahakkuk_turu'], region=region_name)
-                fatura_no_idx = find_column_index(headers, ['faturano', 'fatura_no', 'tedarikcifaturano'], region=region_name)
                 data_row = {
                     'Dağıtım Bölgesi': region_mapping.get('region_name', ''),
                     'Etso Kodu': extract_value_from_row(row, etso_idx, field_name='etso', region_name=region_name),
@@ -1620,7 +1767,15 @@ def read_excel_content(
             headers = sheet.row_values(header_row_idx)
 
             # Sütun indekslerini dinamik resolver ile çözümler
-            indices = resolve_column_indices(headers, region_mapping)
+            sample_rows = [
+                sheet.row_values(row_index)
+                for row_index in range(
+                    header_row_idx + 1, min(sheet.nrows, header_row_idx + 21)
+                )
+            ]
+            indices = resolve_column_indices(
+                headers, region_mapping, sample_rows=sample_rows
+            )
             etso_idx = indices['etso']
             # Notlar 12 #3: Standart dışı format kontrolü
             if etso_idx < 0:
@@ -1632,6 +1787,8 @@ def read_excel_content(
                         f"{source_name or 'Excel kaynağı'} / {sheet.name}",
                         warning_collector,
                         header_row_number=header_row_idx + 1,
+                        sample_rows=sample_rows,
+                        resolved_indices=indices,
                     )
                 print(f"  [UYARI] {region_name} / {sheet.name}: ETSO sütunu bulunamadı – "
                       f"standart dışı format, atlanıyor")
@@ -1644,6 +1801,8 @@ def read_excel_content(
                     f"{source_name or 'Excel kaynağı'} / {sheet.name}",
                     warning_collector,
                     header_row_number=header_row_idx + 1,
+                    sample_rows=sample_rows,
+                    resolved_indices=indices,
                 )
             musteri_idx = indices['musteri']
             tarife_idx = indices['tarife']
@@ -1663,6 +1822,7 @@ def read_excel_content(
             reaktif_fields, ilk_reaktif_fields = resolve_reactive_field_groups(
                 region_mapping, region_name
             )
+            from core.reactive_calculator import calculate_reactive_totals
 
             for row_idx in range(header_row_idx + 1, sheet.nrows):
                 row = sheet.row_values(row_idx)
@@ -1670,7 +1830,6 @@ def read_excel_content(
                     continue
 
                 # Reaktif ve İlk Reaktif hesaplama — DRY: core.reactive_calculator
-                from core.reactive_calculator import calculate_reactive_totals
                 reactive_total, ilk_reaktif_value, sakarya_x = calculate_reactive_totals(
                     row, indices, reaktif_fields, ilk_reaktif_fields, region_name
                 )
@@ -1722,8 +1881,15 @@ def filter_extracted_data(data, region_name=None):
     # Threshold for absurd bedel values - 10 billion TL
     BEDEL_THRESHOLD = 10_000_000_000.0
 
-    HEADER_ETSO_VALUES = {'duykodu', 'etso', 'etsokodu', 'tesisatno', 'tesisatnumarasi', 'sayacid', 'sayac id'}
+    HEADER_ETSO_VALUES = {
+        'duykodu', 'etso', 'etsokod', 'etsokodu', 'tesisatno',
+        'tesisatnumarasi', 'sayacid',
+    }
     HEADER_CUSTOMER_VALUES = {'unvan', 'adsoyad', 'musteri', 'musteriadi', 'muhatapadi', 'aboneadi'}
+    HEADER_CATEGORY_VALUES = {
+        'tarife', 'tarifegrubu', 'faturatamamlanmatarihi',
+        'agog', 'terim', 'terimtipi',
+    }
 
     for row in data:
         bedel = row.get('Dağıtım Bedeli(TL)', 0)
@@ -1732,9 +1898,17 @@ def filter_extracted_data(data, region_name=None):
         etso = row.get('Etso Kodu', '')
 
         # Skip sub-header rows where etso or customer contains literally header titles
-        etso_str = str(etso or '').strip().lower()
-        cust_str = str(customer or '').strip().lower()
-        if etso_str in HEADER_ETSO_VALUES or cust_str in HEADER_CUSTOMER_VALUES:
+        etso_str = normalize_header(etso)
+        cust_str = normalize_header(customer)
+        category_header_values = {
+            normalize_header(row.get(field))
+            for field in ('Tarife Grubu', 'AG OG', 'TERİM')
+        }
+        if (
+            etso_str in HEADER_ETSO_VALUES
+            or cust_str in HEADER_CUSTOMER_VALUES
+            or category_header_values.intersection(HEADER_CATEGORY_VALUES)
+        ):
             continue
 
         # Skip rows with absurdly large bedel values (>10 billion TL) - corrupted data
@@ -1808,6 +1982,13 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
                 }
         normalized_corrections[output_field] = normalized_lookup
 
+    category_source_values = {
+        output_field: set(lookup)
+        for output_field, lookup in normalized_corrections.items()
+        if output_field in {'Tarife Grubu', 'AG OG', 'TERİM'}
+    }
+    category_validation_counts = {}
+
     normalized_sayax_tariffs = {}
     for rule in mapping.get('sayax_tariff_rules', []):
         rule_key = tuple(
@@ -1854,6 +2035,7 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         region_mapping = mapping['regions'][mapped_region_name].copy()
         region_mapping['region_name'] = region
         region_mapping['features'] = mapping.get('features', {}).copy()
+        region_mapping['category_source_values'] = category_source_values
 
         # Apply region-specific rules from Notlar sheet
         rules = apply_note_rules(mapping, mapped_region_name)
@@ -1895,6 +2077,7 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
             alt_region_mapping = alt_region_mapping.copy()
             alt_region_mapping['region_name'] = region
             alt_region_mapping['features'] = mapping.get('features', {}).copy()
+            alt_region_mapping['category_source_values'] = category_source_values
             alt_region_mapping['rules'] = rules
 
         for fname, fpath in excel_files:
@@ -2069,6 +2252,10 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
     
     aggregated_data = []
     aggregation_count = 0
+
+    def record_category_validation_issue(reg_name, field_name, value):
+        issue_key = (str(reg_name or ''), field_name, str(value))
+        category_validation_counts[issue_key] = category_validation_counts.get(issue_key, 0) + 1
     
     def post_process_record(r, reg_name):
         rec = r.copy()
@@ -2178,6 +2365,27 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         if final_ag_og and final_ag_og not in ('AG', 'OG'):
             if 'Çift' in final_terim:
                 rec['AG OG'] = 'OG'
+
+        source_tariff = rec.get('Tarife Grubu')
+        normalized_tariff = canonical_tariff_category(source_tariff)
+        if normalized_tariff is None:
+            record_category_validation_issue(reg_name, 'Tarife Grubu', source_tariff)
+            rec['Tarife Grubu'] = ''
+        else:
+            rec['Tarife Grubu'] = normalized_tariff
+
+        source_ag_og = rec.get('AG OG')
+        normalized_ag_og = canonical_ag_og_category(source_ag_og)
+        if normalized_ag_og is None:
+            record_category_validation_issue(reg_name, 'AG OG', source_ag_og)
+            rec['AG OG'] = ''
+        else:
+            rec['AG OG'] = normalized_ag_og
+
+        source_term = rec.get('TERİM')
+        if is_source_header_or_date(source_term):
+            record_category_validation_issue(reg_name, 'TERİM', source_term)
+            rec['TERİM'] = ''
 
         sayax_key = tuple(
             normalize_correction_lookup(rec.get(field))
@@ -2332,6 +2540,15 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         'mapping_features': mapping.get('features', {}).copy(),
         'mapping_warnings': list(mapping.get('mapping_warnings', [])),
         'source_header_warnings': source_header_warnings,
+        'category_validation_warnings': [
+            {
+                'Dağıtım Bölgesi': region_name,
+                'Alan': field_name,
+                'Geçersiz kaynak değeri': value,
+                'Kayıt sayısı': count,
+            }
+            for (region_name, field_name, value), count in sorted(category_validation_counts.items())
+        ],
         'correction_duplicates': list(mapping.get('correction_duplicates', [])),
         'correction_counts': correction_counts.copy(),
         'correction_total': sum(correction_counts.values()),
@@ -2369,23 +2586,43 @@ def _format_guc_kw(value):
         return val_str  # Dönüştürülemezse orijinali bırak
 
 
-def _find_eno_file(base_path):
-    """Veri klasöründe 'XX ENO AyAdı' formatında ENO dosyasını otomatik bul.
-    
-    Örnek: '01 ENO Ocak.xlsx', '06 ENO Haziran.xlsx'
+def _find_eno_file(base_path, eno_file_path=None):
+    """Seçilen ENO dosyasını kullan veya veri klasöründe derinlemesine ara.
+
+    Otomatik arama önce ana klasördeki dosyaları, sonra alt klasörleri tarar.
     """
-    import re
+    supported_extensions = {'.xlsx', '.xlsm', '.xls'}
+    if eno_file_path:
+        selected_path = os.path.abspath(os.path.expandvars(os.path.expanduser(eno_file_path)))
+        if (
+            os.path.isfile(selected_path)
+            and os.path.splitext(selected_path)[1].casefold() in supported_extensions
+            and not os.path.basename(selected_path).startswith('~$')
+        ):
+            return selected_path
+
     if not base_path or not os.path.isdir(base_path):
         return None
-    
+
     eno_pattern = re.compile(r'^\d{2}\s+ENO\s+', re.IGNORECASE)
-    
-    for fname in os.listdir(base_path):
-        if eno_pattern.match(fname) and (fname.endswith('.xlsx') or fname.endswith('.xls')):
-            fpath = os.path.join(base_path, fname)
-            if os.path.isfile(fpath) and not fname.startswith('~$'):
-                return fpath
-    return None
+    candidates = []
+    for root_dir, dir_names, file_names in os.walk(base_path):
+        dir_names[:] = sorted(
+            (name for name in dir_names if not name.startswith('.')),
+            key=str.casefold,
+        )
+        for fname in sorted(file_names, key=str.casefold):
+            if fname.startswith('~$') or not eno_pattern.match(fname):
+                continue
+            if os.path.splitext(fname)[1].casefold() not in supported_extensions:
+                continue
+            fpath = os.path.join(root_dir, fname)
+            if os.path.isfile(fpath):
+                relative_path = os.path.relpath(fpath, base_path)
+                depth = relative_path.count(os.sep)
+                candidates.append((depth, relative_path.casefold(), fpath))
+
+    return min(candidates)[2] if candidates else None
 
 
 def _load_eno_lookups(eno_path):
@@ -2402,6 +2639,10 @@ def _load_eno_lookups(eno_path):
     try:
         wb = openpyxl.load_workbook(eno_path, read_only=True, data_only=True)
         ws = wb.active
+        # Some ENO exports declare <dimension ref="A1"> despite containing
+        # thousands of populated rows. Read-only mode trusts that stale range
+        # unless dimensions are reset, which silently returns no lookup rows.
+        ws.reset_dimensions()
         
         row_count = 0
         # D, E ve AD sütunları gerekiyor; yalnızca D:AD aralığını akış halinde oku.
@@ -2440,7 +2681,7 @@ def _load_eno_lookups(eno_path):
     return sayac_id_to_eic, eic_to_abone
 
 
-def enrich_from_eno_file(records, base_path):
+def enrich_from_eno_file(records, base_path, eno_file_path=None):
     """Çıktı kayıtlarını ENO dosyasından zenginleştir:
     
     1. ETSO Kodu '40Z' ile başlamıyorsa → ENO'daki Sayaç ID eşleşmesiyle EIC Kod'a çevir
@@ -2449,9 +2690,16 @@ def enrich_from_eno_file(records, base_path):
     Returns:
         dict: Zenginleştirme istatistikleri
     """
-    stats = {'eno_file': None, 'etso_converted': 0, 'musteri_filled': 0, 'total_records': len(records)}
+    stats = {
+        'eno_file': None,
+        'eno_meter_lookup_count': 0,
+        'eno_customer_lookup_count': 0,
+        'etso_converted': 0,
+        'musteri_filled': 0,
+        'total_records': len(records),
+    }
     
-    eno_path = _find_eno_file(base_path)
+    eno_path = _find_eno_file(base_path, eno_file_path=eno_file_path)
     if not eno_path:
         print("[ENO] Veri klasöründe ENO dosyası bulunamadı (format: 'XX ENO AyAdı.xlsx')")
         return stats
@@ -2460,6 +2708,8 @@ def enrich_from_eno_file(records, base_path):
     print(f"\n[ENO] Dosya bulundu: {stats['eno_file']}")
     
     sayac_id_to_eic, eic_to_abone = _load_eno_lookups(eno_path)
+    stats['eno_meter_lookup_count'] = len(sayac_id_to_eic)
+    stats['eno_customer_lookup_count'] = len(eic_to_abone)
     
     if not sayac_id_to_eic and not eic_to_abone:
         print("[ENO] Lookup tabloları boş, zenginleştirme yapılamadı")
@@ -2524,6 +2774,7 @@ def save_to_excel(data, filepath):
     output_columns = list(STANDARD_COLUMNS)
     if extended_output_enabled:
         output_columns.extend(EXTENDED_OUTPUT_COLUMNS)
+    maximum_lengths = [len(str(header)) for header in output_columns]
 
     # Header satırı ekle
     ws.append(output_columns)
@@ -2576,6 +2827,12 @@ def save_to_excel(data, filepath):
                 row.get('Standart Dışı Tutar (TL)', 0),
                 row.get('Tazminat Bedeli', 0),
             ])
+        for column_index, value in enumerate(output_row):
+            if value is not None:
+                maximum_lengths[column_index] = max(
+                    maximum_lengths[column_index],
+                    len(str(value)),
+                )
         ws.append(output_row)
 
         # Hizalama: Tum sutunlar sola hizali
@@ -2599,17 +2856,10 @@ def save_to_excel(data, filepath):
             for c in range(len(STANDARD_COLUMNS) + 1, len(output_columns) + 1):
                 ws.cell(idx, c).number_format = COMMA_STYLE_FORMAT
 
-    # Kaydetmeden önce tüm sütunları max karakter uzunluğu + 2 ile genişlet.
-    for col in ws.columns:
-        max_length = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            try:
-                if cell.value is not None and len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except Exception:
-                pass
-        ws.column_dimensions[col_letter].width = max_length + 2
+    # Widths are accumulated during row writing, avoiding a second full workbook scan.
+    for column_index, max_length in enumerate(maximum_lengths, start=1):
+        column_letter = ws.cell(1, column_index).column_letter
+        ws.column_dimensions[column_letter].width = max_length + 2
     
     try:
         wb.save(filepath)

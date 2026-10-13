@@ -484,6 +484,7 @@ def apply_note_rules(mapping, region_name):
         'uludağ_specific': False,
         'reaktif_tenzil_rule': None,
         'force_fixed_fields': [],
+        'force_header_fields': [],
     }
     
     notes = mapping['notes']
@@ -514,9 +515,11 @@ def apply_note_rules(mapping, region_name):
     else:
         rules['reaktif_tenzil_rule'] = 'AD + AF sum'
 
-    # Notlar 7 #1 & Notlar 9 #1: Çamlıbel'de tekrarlanan Tarife başlıkları arasından AV (index 47) zorunlu.
+    # Çamlıbel'in Tarife sütunları dönemden döneme yer değiştirebiliyor.
+    # Başlık ve altındaki değerler birlikte değerlendirilerek aynı kaynak sütunu
+    # Tarife Grubu, AG OG ve Terim için seçilir; sabit sütun harfi kullanılmaz.
     if region_name == 'Çamlıbel EDAŞ':
-        rules['force_fixed_fields'] = ['tarife', 'ag_og', 'terim']
+        rules['force_header_fields'] = ['tarife', 'ag_og', 'terim']
 
     # Notlar 7 #2; Meram'da tenzil/ihlal yalnız İlk Reaktif alanında kalır.
     base_reactive_regions = ['ADM EDAŞ', 'Gediz EDAŞ', 'Trakya EDAŞ', 'Uludağ EDAŞ', 'Meram EDAŞ']

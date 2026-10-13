@@ -1,0 +1,26 @@
+{
+  "baseline_month": "2026-06",
+  "header_signatures": {
+    "ADM EDAŞ": ["014779015673b09374dbe85b599d14c9bb8050f62af67d1fbdda5029b60c0383"],
+    "Akdeniz EDAŞ": ["d8eb08f82c97d4f087847b4db27622496f37acdf64b990c68d01272025d708e1"],
+    "AKEDAŞ": ["919a9550d2a0aaf23a5fe9293c2f51f9e3c0bed176c63890f77d5dd8df5d1131"],
+    "Aras EDAŞ": ["62c899456b7447033d663efec65b5a6d55905f97ccdec06d5cde1d00bd88aee9"],
+    "AYEDAŞ": ["74764970f5c2740ff55a51c199f1b0c5f99567ef9e6fd094ba4066ad0df9f6c2"],
+    "Başkent EDAŞ": ["74764970f5c2740ff55a51c199f1b0c5f99567ef9e6fd094ba4066ad0df9f6c2"],
+    "Boğaziçi EDAŞ": ["a55fe7f650e5662061c1546f2f61f4149af28ee6109118eb59e3fda8dffe3012"],
+    "Dicle EDAŞ": ["62c899456b7447033d663efec65b5a6d55905f97ccdec06d5cde1d00bd88aee9"],
+    "Fırat EDAŞ": ["62c899456b7447033d663efec65b5a6d55905f97ccdec06d5cde1d00bd88aee9"],
+    "Gediz EDAŞ": ["014779015673b09374dbe85b599d14c9bb8050f62af67d1fbdda5029b60c0383"],
+    "Kayseri ve Civarı": ["61ba60e30e935f0f3b586d1978c66cbd7cd4be421d38631a5b6e56a9342bb2a6"],
+    "Meram EDAŞ": ["5db6dfe8577ab247744a59b152014905b803a862354265b2b21fd2b2b8e1fb3d"],
+    "Osmangazi EDAŞ": ["72edd31747554b72ed373f707602edf448ed3ba4cfef672ffbc7a65ed17821ea"],
+    "Sakarya EDAŞ": ["8243ee8f7a1dc4e1346f72aa3b158710159dcdc186e933d2ab0e78e20538056d"],
+    "Toroslar EDAŞ": ["74764970f5c2740ff55a51c199f1b0c5f99567ef9e6fd094ba4066ad0df9f6c2"],
+    "Trakya EDAŞ": ["219dab661d7f20921d882cee92d77374c73b855ed2bb15e1aa7f6d14146274c3"],
+    "Uludağ EDAŞ": ["39440ede46ebd7cae21f27d5c32eba0b871c9383b24fbd7d283616cdb92f27f0"],
+    "Vangölü EDAŞ": ["62c899456b7447033d663efec65b5a6d55905f97ccdec06d5cde1d00bd88aee9"],
+    "Yeşilırmak EDAŞ": ["4b1faf5ab3c7d69c6e3342c5a09db8e0cf438f8cf39ec23b76cc94155a33871d"],
+    "Çamlıbel EDAŞ": ["7a90195976d09c44a059f40408f58ee6979ae4a38db54e582ea16867773642fc"],
+    "Çoruh EDAŞ": ["62c899456b7447033d663efec65b5a6d55905f97ccdec06d5cde1d00bd88aee9"]
+  }
+}

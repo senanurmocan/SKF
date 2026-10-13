@@ -58,8 +58,12 @@ def resolve_column_indices(headers, region_mapping):
         if field not in fields:
             fields.append(field)
 
+    force_header_fields = set(region_mapping.get('rules', {}).get('force_header_fields', []))
     if not headers:
-        return {field: region_mapping.get(f'{field}_index', -1) for field in fields}
+        return {
+            field: -1 if field in force_header_fields else region_mapping.get(f'{field}_index', -1)
+            for field in fields
+        }
 
     normalized_headers = [normalize_header(h) for h in headers]
     resolved = {}
@@ -99,7 +103,7 @@ def resolve_column_indices(headers, region_mapping):
             known_header_normalized = normalize_header(known_header)
             found_idx = find_header_near_mapping(known_header_normalized, fixed_idx)
 
-        # Notlar 7 / Çamlıbel: aynı isimli iki Tarife başlığından AV zorunlu.
+        # Header-bound fields must not silently fall back to a stale column letter.
         if found_idx == -1 and field in force_fixed_fields and 0 <= fixed_idx < len(headers):
             found_idx = fixed_idx
 
@@ -119,10 +123,10 @@ def resolve_column_indices(headers, region_mapping):
             found_idx = find_header_near_mapping(norm_target, fixed_idx)
 
         # Prioritize explicitly assigned column index from mapping if header name didn't match directly
-        if found_idx == -1 and 0 <= fixed_idx < len(headers):
+        if found_idx == -1 and field not in force_header_fields and 0 <= fixed_idx < len(headers):
             found_idx = fixed_idx
 
-        if found_idx == -1:
+        if found_idx == -1 and field not in force_header_fields:
             for syn in FIELD_SYNONYMS.get(field, []):
                 if syn in normalized_headers:
                     found_idx = normalized_headers.index(syn)

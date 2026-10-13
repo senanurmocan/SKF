@@ -126,14 +126,14 @@ _SPECIAL_HEADER_MAPPING_FALLBACK = {
         'musteri': None,
     },
     'Çamlıbel EDAŞ': {
-        'tarife': 47,
-        'ag_og': 47,
-        'terim': 47,
+        'tarife': 'Tarife',
+        'ag_og': 'Tarife',
+        'terim': 'Tarife',
     },
     'ÇAMLIBEL EDAŞ': {
-        'tarife': 47,
-        'ag_og': 47,
-        'terim': 47,
+        'tarife': 'Tarife',
+        'ag_og': 'Tarife',
+        'terim': 'Tarife',
     },
     'YEŞİLIRMAK EDAŞ': {
         'etso': 'Etso/Kullanıcı',
