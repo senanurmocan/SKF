@@ -318,20 +318,16 @@ Uygulama, hem yerel masaüstü ortamında hem de kurumsal intranet (LAN) senaryo
 
 ### 6.1 Güvenlik Modları (`run.py` Başlatıcı)
 
-`run.py` iki çalışma biçimi sunar:
+`run.py` komut satırı arayüzü 3 farklı güvenlik modu sunar:
 
-| Parametre | Dinleme adresi | Kullanım |
-|---|---|---|
-| Varsayılan | `127.0.0.1` | Yerel masaüstü kullanımı; ağdan erişime kapalıdır. |
-| `--server` | `127.0.0.1` | IIS reverse proxy arkasındaki şirket içi yayın; kimlik doğrulama IIS Windows Authentication ve AD grubunda yapılır. |
-| `--lan` | `127.0.0.1` | Geriye dönük uyumluluk takma adı; `--server` ile aynı davranır, LAN arayüzüne doğrudan bağlanmaz. |
-| `--lan-open` | — | Kaldırılmıştır; XSRF koruması kapalı sunucu başlatılamaz. |
-
-Tüm modlarda XSRF ve CORS koruması açıktır. Sunucu modunda Streamlit izin verilen Host listesini ve dış HTTPS kökenini kullanır. Şirket içi kurulum adımları için depo kökündeki `DEPLOYMENT_INTERNAL.md` dosyasına bakın.
+| Parametre | Dinleme Adresi | XSRF Koruması | Kullanım Senaryosu |
+|---|---|---|---|
+| `--local` *(Varsayılan)* | `127.0.0.1` | Açık | **En güvenli mod.** Yalnızca yerel makineden erişilebilir; ağa kapalıdır. |
+| `--lan` | `0.0.0.0` | **Açık** | **Güvenli LAN modu.** Kurumsal ağdaki diğer kullanıcıların erişimine açar; XSRF aktiftir. |
+| `--lan-open` | `0.0.0.0` | **Kapalı** | **Geliştirme modu.** Ağ üzerinden testlerde tarayıcı güvenlik kısıtlamalarını esnetir. |
 
 #### Dinamik Port Algılama (`find_free_port`)
-
-Yerel kullanımda `run.py`, makinede çalışan diğer yerel projelerle çakışmayı önlemek için `8505` portundan başlayarak ilk boş TCP portunu bulur (`8505`–`8600` aralığı). Şirket içi sunucu modunda varsayılan port `8505` olarak sabittir. İstenirse `--port <NO>` parametresi kullanılabilir.
+`run.py`, makinede çalışan diğer yerel projelerle çakışmayı önlemek için varsayılan olarak `8505` portundan başlayarak ilk boş TCP portunu otomatik olarak bulur (`8505`–`8600` aralığı). Sabit bir port istenirse `--port <NO>` parametresi kullanılabilir.
 
 ### 6.2 Yerel Mod (Masaüstü İş Akışı - `Uygulamayi_Baslat.bat`)
 
@@ -342,19 +338,22 @@ Kullanıcı → Uygulamayi_Baslat.bat → run.py (Varsayılan: --local) → stre
           → İşlem tamamen yerel makinede, sıfır ağ riski
 ```
 
-### 6.3 Şirket İçi Sunucu Modu
+### 6.3 LAN Paylaşım Modu
 
-```text
-Kullanıcı tarayıcısı → IIS HTTPS + Windows Authentication → AD erişim grubu
-                                                    → localhost:8505 Streamlit
-Streamlit servis hesabı → yalnızca tanımlı şirket dosya paylaşımlarına salt okunur erişim
 ```
-
-Uygulama genel bir LAN portuna bağlanmaz. Yetkili dosyalar sunucuda listelenir ve RAM'de işlenir; her kullanıcının sonucu kendi Streamlit oturumunda sunulur. Kurulum, izinler ve veri akışı `DEPLOYMENT_INTERNAL.md` içinde açıklanır.
+Host (run.py --lan) → 0.0.0.0:8505 dinler (XSRF aktif)
+LAN kullanıcıları   → http://<host-ip>:8505
+                    → Sadece sonuçları inceler / rapor indirir (read-only)
+                    → Klasör seçimi host makinede yürütülür
+```
 
 ### 6.4 Streamlit Cloud Modu
 
-Genel Streamlit sayfası yerel kullanım yönergelerini gösterir; şirket paylaşımına bağlanmaz, fatura dosyası seçmez ve fatura verisi işlemez. Şirket içi veri işleme yalnızca IIS arkasında çalışan şirket sunucusu dağıtımında yapılır.
+```
+GitHub push (main dalı) → Otomatik deploy tetiklenir
+                        → https://ck-enerji-teklif-uretici-ve-karsilastirma.streamlit.app/
+                        → Dağıtım ve canlı sunum
+```
 
 ---
 

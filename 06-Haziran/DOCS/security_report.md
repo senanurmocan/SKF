@@ -5,8 +5,6 @@
 **Hazırlayan:** Principal Software Engineer (Security Audit)  
 **Kapsam:** Statik kod analizi, ağ güvenliği, veri akışı ve KVKK risk değerlendirmesi (v2.0 Güvenlik Sıkılaştırması)
 
-> **Güncel dağıtım notu (13 Ekim 2026):** Bu raporun aşağıdaki v2.0 değerlendirmesi tarihsel durumdur. Eski `--lan`/`--lan-open`, IP beyaz listesi ve CORS açıklamaları artık geçerli dağıtım yönergesi değildir. Şirket içi sunucu mimarisi, erişim sınırları ve veri akışı için [`DEPLOYMENT_INTERNAL.md`](../../DEPLOYMENT_INTERNAL.md) belgesini esas alın.
-
 ---
 
 ## 1. Genel Güvenlik Özeti
@@ -15,10 +13,10 @@
 
 | Kategori | Skor (v1.0) | Skor (v2.0) | Durum |
 |---|---|---|---|
-| Veri Gizliliği (KVKK) | 🟢 7/10 | 🟢 9/10 | Şirket sunucusunda bellek içi işleme; tarayıcıdan yükleme ve bulut aktarımı yok |
+| Veri Gizliliği (KVKK) | 🟢 7/10 | 🟢 9/10 | Yerel işleme, web upload yok, LAN modunda IP whitelist + XSRF koruması |
 | Kimlik Bilgisi Yönetimi | 🟢 9/10 | 🟢 9/10 | Hardcoded credential yok |
 | Girdi Doğrulama | 🟡 5/10 | 🟡 6/10 | Dosya format kontrolü var, path traversal GUI tarafından kısıtlı |
-| Ağ Güvenliği | 🟡 4/10 | 🟢 8/10 | IIS Windows Authentication + AD grubu; Streamlit yalnız loopback, CORS/XSRF açık |
+| Ağ Güvenliği | 🟡 4/10 | 🟢 8/10 | 3 kademeli başlatma modu, RFC 1918 IP whitelist, XSRF aktif, CORS kapalı |
 | Hata Yönetimi | 🟡 6/10 | 🟡 6/10 | Genel try-except var, istemciye bilgi sızıntısı riski düşük |
 | Dağıtım & Sürüm Güvenliği | 🟡 5/10 | 🟢 8/10 | Git branch stratejisi (`main` production + `dev` development) devrede |
 | Bağımlılık Güvenliği | 🟡 5/10 | 🟢 9/10 | `requirements.txt` içindeki tüm bağımlılıklar `==` ile donduruldu (pinned) |
@@ -29,8 +27,9 @@ Hızlı prototipleme ("Vibe coding") süreçlerinde güvenlik kontrollerinin ark
 
 - ✅ **Pozitif (Temel İlke):** Hassas verilerin harici/bulut ortamlara aktarılması mimari olarak engellenmiştir (KVKK odaklı tasarım).
 - ✅ **Pozitif (Yerel GUI):** `tkinter.filedialog` ile doğrudan yerel dosya sistemi erişimi sağlanır.
-- ✅ **Güncel (Şirket içi yayın):** IIS Windows Authentication ve AD güvenlik grubu kullanıcı erişimini sınırlar; Streamlit loopback arayüzünde kalır.
-- ✅ **Güncel (Web güvenliği):** CORS ve XSRF korumaları açıktır; sunucu için izin verilen Host/köken listeleri ayarlanır ve kullanım istatistikleri kapalıdır.
+- ✅ **YENİ (Ağ Segmentasyonu):** `run.py` üzerinde 3 farklı güvenlik modu (`--local`, `--lan`, `--lan-open`) tanımlandı.
+- ✅ **YENİ (IP Whitelist):** `app.py` içinde `_check_ip_whitelist()` fonksiyonu ile sadece RFC 1918 özel ağ bloklarına izin verilir.
+- ✅ **YENİ (Web Güvenliği):** Streamlit XSRF koruması devreye alındı, CORS erişimi kapatıldı ve telemetri veri gönderimi devre dışı bırakıldı.
 - ✅ **YENİ (Sürüm Kontrol Güvenliği):** `main` (production) ve `dev` (development) dalları ayrılarak test edilmemiş kodların canlıya geçmesi engellendi.
 - ✅ **YENİ (Tedarik Zinciri Güvenliği):** `requirements.txt` dosyasındaki tüm paketler kesin sürümleriyle (`==`) sabitlendi.
 - ✅ **YENİ (DoS Koruması):** `MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024` (50MB) dosya boyutu sınırı uygulandı.
@@ -89,15 +88,32 @@ Dosya Sistemi → openpyxl/xlrd (bellek) → dict listesi → pandas DataFrame �
 - **Risk Seviyesi:** 🟢 Düşük
 - **Mevcut Durum:** Çıktı dosyasındaki formüller statik şablonlarla üretilmektedir (`=J{idx}+K{idx}+L{idx}+M{idx}`). Kullanıcı girdisi doğrudan formül hücresi olarak yazdırılmamaktadır.
 
-### 3.4 Şirket İçi Sunucuda Ağ Erişimi ve Veri Akışı
+### 3.4 Ağ Erişim Kontrolü ve Web Güvenliği (ÖNEMLİ İYİLEŞTİRME — v2.0)
 
-Şirket içi dağıtım için güncel yaklaşım:
+| Zafiyet / Güvenlik Kontrolü | v1.0 Durumu | v2.0 Durumu | Çözüm / Uygulama |
+|---|---|---|---|
+| **Ağ Erişim Yetkilendirmesi** | 🔴 Yok (0.0.0.0 açık) | 🟢 **NOW IMPLEMENTED** | `run.py` 3 güvenlik modu & IP Whitelist |
+| **XSRF (Cross-Site Request Forgery)** | 🔴 Kapalı | 🟢 **NOW MITIGATED** | `server.enableXsrfProtection = true` |
+| **CORS (Cross-Origin Resource Sharing)** | 🟡 Varsayılan Açık | 🟢 **NOW DISABLED** | `server.enableCORS = false` |
+| **Kullanım İstatistikleri (Telemetri)** | 🟡 Açık | 🟢 **NOW DISABLED** | `browser.gatherUsageStats = false` |
 
-- IIS, Windows Authentication ile etki alanı kullanıcısını doğrular ve yalnızca yapılandırılmış AD güvenlik grubuna izin verir. Tek bir çalışanın kullanıcı adı uygulamaya sabitlenmez.
-- IIS reverse proxy HTTPS üzerinden hizmet verir. Streamlit `127.0.0.1:8505` üzerinde dinler ve ağdan doğrudan erişime kapalıdır. Streamlit CORS ve XSRF korumaları açıktır; izin verilen Host ve köken değerleri yapılandırılır.
-- Uygulama servis hesabı yalnızca gerekli SMB klasörlerini salt okunur açar. Dosya seçimi yapılandırılmış klasörlerle sınırlıdır; tarayıcıya dosya yükleme alanı sunulmaz.
-- Dosyalar sunucu belleğinde işlenir. Uygulama raporu sunucuda kalıcı dosyaya yazmaz; indirme şirket içi HTTPS üzerinden kullanıcının tarayıcısına ulaşır.
-- Yayın ve güvenlik doğrulamaları için `DEPLOYMENT_INTERNAL.md` içindeki IIS, AD grubu, port, TLS ve servis hesabı adımlarını izleyin.
+#### a) `run.py` Çok Kademeli Başlatma Modları
+Uygulama artık farklı kullanım senaryolarına uygun 3 güvenlik modu ile çalıştırılmaktadır:
+1. `--local` (Varsayılan - En Güvenli):
+   - Sunucu sadece `127.0.0.1` arayüzüne bağlanır.
+   - Ağ üzerinden gelebilecek hiçbir erişime izin vermez; en izole ve güvenli çalışma şeklidir.
+2. `--lan` (LAN Erişimi - Güvenlikli Paylaşım):
+   - Sunucu `0.0.0.0` üzerinden yerel ağdaki çalışma arkadaşlarına açılır.
+   - `server.enableXsrfProtection = true` zorunlu kılınarak XSRF saldırılarına karşı korunur.
+   - `server.enableCORS = false` ile yetkisiz çapraz kaynak istekleri engellenir.
+   - `browser.gatherUsageStats = false` ile telemetri kapatılır.
+3. `--lan-open` (Yalnızca Geliştirme/Test):
+   - XSRF koruması kapalı LAN erişimi sağlar. Yalnızca test ve hata ayıklama amaçlıdır; üretimde kullanılmaz.
+
+#### b) `app.py` IP Beyaz Listesi (IP Whitelist)
+LAN modunda çalışırken bile sadece güvenilir özel ağlardan gelen istemcilere izin verilir:
+- **Özel Ağ Filtresi (`_ALLOWED_PREFIXES`):** RFC 1918 standartlarındaki özel IP blokları (`127.x`, `10.x`, `192.168.x`, `172.16-31.x`), `::1` ve `localhost` tanımlanmıştır.
+- **WebSocket Header Tespiti (`_check_ip_whitelist`):** Streamlit WebSocket bağlantısı üzerinden istemcinin `X-Forwarded-For` veya `Host` başlıkları denetlenir. İzin verilmeyen IP adreslerinden gelen bağlantılarda hata mesajı basılarak sayfa yürütmesi derhal durdurulur (`st.stop()`).
 
 ### 3.5 Bağımlılık Güvenliği (Supply Chain)
 - **Risk Seviyesi:** 🟡 Orta
@@ -127,10 +143,10 @@ Dosya Sistemi → openpyxl/xlrd (bellek) → dict listesi → pandas DataFrame �
 
 | # | Güvenlik Önlemi | Kategori | Durum | Açıklama |
 |---|---|---|---|---|
-| 1 | **Şirket İçi Sunucu Modu** | Ağ Güvenliği | ✅ **DONE** | `--server` Streamlit'i loopback'te çalıştırır; IIS HTTPS reverse proxy arkasında yayın yapar. |
-| 2 | **AD Erişim Yetkisi** | Kimlik / Ağ | ✅ **DONE** | IIS Windows Authentication ile yetki AD güvenlik grubu üzerinden tanımlanır. |
-| 3 | **XSRF Koruması** | Web Güvenliği | ✅ **DONE** | Streamlit XSRF koruması etkinleştirilmiştir. |
-| 4 | **CORS Köken İzni** | Web Güvenliği | ✅ **DONE** | CORS etkindir ve izinli şirket içi HTTPS kökeni yapılandırılır. |
+| 1 | **3 Kademeli Çalıştırma Modu** | Ağ Güvenliği | ✅ **DONE** | `--local`, `--lan`, `--lan-open` modları `run.py`'a entegre edildi. |
+| 2 | **IP Whitelist Mekanizması** | Ağ / KVKK | ✅ **DONE** | `_ALLOWED_PREFIXES` ve `_check_ip_whitelist()` ile özel ağ kontrolü sağlandı. |
+| 3 | **XSRF Koruması** | Web Güvenliği | ✅ **DONE** | `--server.enableXsrfProtection true` zorunlu kılındı. |
+| 4 | **CORS Kısıtlaması** | Web Güvenliği | ✅ **DONE** | `--server.enableCORS false` yapılandırıldı. |
 | 5 | **Telemetri Kapatma** | Veri Gizliliği | ✅ **DONE** | `--browser.gatherUsageStats false` ile veri sızıntısı engellendi. |
 | 6 | **Git Branch Ayrımı** | Dağıtım | ✅ **DONE** | `main` (prod) ve `dev` dalları kurularak kod izolasyonu sağlandı. |
 | 7 | **Tedarik Zinciri Sabitleme** | Bağımlılık | ✅ **DONE** | `requirements.txt` içerisindeki tüm kütüphaneler `==` ile donduruldu. |

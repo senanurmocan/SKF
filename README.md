@@ -1,16 +1,21 @@
-# CK Enerji SKF Fatura Veri Portalı
+# SKF Fatura Veri Portalı
 
-Elektrik dağıtım faturalarını birleştiren ve Excel raporu oluşturan Streamlit uygulaması.
+Türkiye'deki 21 elektrik dağıtım bölgesinden gelen fatura çalışma kitaplarını
+standartlaştırıp analiz eden, Excel çıktısı üreten Streamlit uygulaması.
 
-## Şirket içi kullanım
+## Gereksinimler
 
-Önerilen yayın modeli Windows Server, IIS reverse proxy ve Windows Authentication'dır. Erişim AD güvenlik grubuyla sınırlandırılır; Streamlit yalnızca sunucunun `127.0.0.1:8505` adresinde dinler. Tarayıcı dosya yüklemez. Uygulama, yapılandırılmış şirket paylaşımındaki dönem ve Excel dosyalarını sunucu üzerinden seçtirir.
+- Python 3.14
+- `06-Haziran/SKF Başlıkları.xlsx` mapping dosyası (bu depoda bulunur)
+- Analiz edilecek aylık EDAŞ çalışma kitapları ve varsa ENO dosyası
 
-Dosyalar ağ paylaşımından şirket sunucusuna okunur, sunucu belleğinde işlenir ve sonuç şirket içi HTTPS üzerinden indirilir. Fatura verileri Streamlit Cloud'a veya üçüncü taraf depolamaya gönderilmez. Verilerin sunucu belleğinde işleneceğini ve indirilen raporun kullanıcı cihazına ulaşacağını dikkate alın.
+Ham fatura dosyaları, müşteri/ETSO bilgileri, ENO dosyaları ve üretilen raporlar
+kişisel veri veya ticari bilgi içerebildiğinden Git tarafından izlenmez. Bunları
+uygulama klasörüne ya da seçtiğiniz yerel veri klasörüne koyun.
 
-Başlangıç ve BT kurulum adımları için [şirket içi dağıtım kılavuzuna](DEPLOYMENT_INTERNAL.md) bakın. IIS örnek yapılandırması ve servis betikleri `deploy/windows/` altındadır.
+## Kurulum ve başlatma
 
-## Yerel geliştirme
+Depo kökünde PowerShell kullanarak:
 
 ```powershell
 py -3.14 -m venv .venv
@@ -19,15 +24,18 @@ python -m pip install -r 06-Haziran/requirements.txt
 python run_app.py
 ```
 
-Yerel başlatıcı yalnızca `127.0.0.1` üzerinde çalışır. `--server` şirket içi dağıtım içindir ve yalnızca IIS kimlik doğrulamalı reverse proxy arkasında kullanılmalıdır. `--lan-open` kaldırılmıştır.
+Uygulama varsayılan olarak yalnızca bu bilgisayardan erişilebilen `127.0.0.1`
+adresinde açılır. `--port 8510` gibi bir argümanla port seçebilirsiniz:
 
-## Genel web sayfası
+```powershell
+python run_app.py --port 8510
+```
 
-Streamlit Cloud'daki genel sayfa dosya seçmez ve fatura verisi işlemez; yalnızca yerel indirme/yönlendirme ekranıdır.
+Güvenilir yerel ağda paylaşmak için `python run_app.py --lan` kullanılabilir.
+`--lan-open` XSRF korumasını kapattığından yalnızca geliştirme/test içindir.
 
-## Veri ve dosyalar
-
-Fatura kaynakları, müşteri/ETSO bilgileri ve üretilen raporlar Git tarafından izlenmez. Şirket içi sunucudaki uygulama servisine yalnızca gerekli ağ paylaşımında salt okunur yetki verin. Paylaşılan mapping dosyası `06-Haziran/SKF Başlıkları.xlsx` konumundadır.
+Uygulama ekranında 21 EDAŞ bölge klasörünün bulunduğu ana dizini seçin. Sonuç
+Excel dosyasını arayüzdeki indirme düğmesiyle alın.
 
 ## Testler
 
@@ -36,3 +44,20 @@ python -m pip install -r requirements-dev.txt
 Set-Location 06-Haziran
 ..\.venv\Scripts\python.exe -m pytest -q
 ```
+
+Birim testleri sentetik girdilerle çalışır. Golden regresyon testi, yerel EDAŞ
+çalışma kitapları ve mapping dosyası mevcutsa 21 bölge/2.593 kayıt akışını da
+doğrular; bu özel fatura verileri depoya eklenmez.
+
+## Proje yapısı
+
+- `06-Haziran/app.py`: Streamlit arayüzü ve analiz orkestrasyonu
+- `06-Haziran/extract_and_compare.py`: fatura dosyalarını okuma, normalize etme,
+  birleştirme, doğrulama ve Excel çıktısı üretme
+- `06-Haziran/new_mapping_parser.py`: mapping çalışma kitabındaki bölge
+  başlıklarını, notları ve düzeltme kurallarını okuma
+- `06-Haziran/core/`: sayı/ETSO/bölge normalizasyonu, sütun çözümleme, reaktif
+  hesaplama, ENO zenginleştirme ve Excel yazımı
+- `06-Haziran/config/`: sabitler ve mapping başlık ekleri
+- `06-Haziran/tests/`: birim ve golden regresyon testleri
+- `06-Haziran/DOCS/`: tasarım, güvenlik ve mühendislik dokümanları

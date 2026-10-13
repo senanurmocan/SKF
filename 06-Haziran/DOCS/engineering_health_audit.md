@@ -16,7 +16,7 @@
 |---|---|:---:|:---:|:---:|---|---|
 | 1 | **Modülerlik** | 3/10 | **8/10** | 🟢 +5 | Ng: *"Agentic coding = narrow context + clear boundaries"* | Monolitik yapı 8 izole modüle bölündü (`core/` ve `config/`). Facade pattern ile geriye dönük tam uyumluluk korundu. Hardcoded başlıklar `header_overrides.json` dosyasına taşındı. |
 | 2 | **Test Kapsamı** | 1/10 | **8/10** | 🟢 +7 | Brooks: *"1/3 planning, 1/6 coding, 1/4 testing, 1/4 component test"* | 4 test dosyasında toplam 61 pytest testi devreye alındı. Golden Core regresyon testi (2593 kayıt, 21 bölge, 0 fark) otomatik doğrulama katmanına dönüştürüldü. |
-| 3 | **Güvenlik** | 3/10 | **7/10** | 🟢 +4 | OWASP / KVKK Risk Analizi | Güncel şirket içi yayın: IIS Windows Authentication + AD güvenlik grubu, HTTPS reverse proxy, loopback Streamlit, etkin CORS/XSRF ve telemetri kapalıdır. |
+| 3 | **Güvenlik** | 3/10 | **7/10** | 🟢 +4 | OWASP / KVKK Risk Analizi | 3 kademeli başlatma modu (`--local`, `--lan`, `--lan-open`), RFC 1918 IP whitelist (`_check_ip_whitelist`), Streamlit XSRF koruması aktif, CORS devre dışı ve telemetri kapatıldı. |
 | 4 | **Bağımlılık Yönetimi** | 5/10 | **9/10** | 🟢 +4 | Supply Chain Security | `requirements.txt` içindeki tüm bağımlılıklar `==` operatörüyle sürümleri donduruldu (pinned). Test altyapısı için pytest entegrasyonu tamamlandı. |
 | 5 | **Kod Kalitesi** | 6/10 | **7/10** | 🟢 +1 | DRY & Clean Code Prensipleri | 4 farklı okuyucuda kopyalanmış reaktif hesaplama mantığı tek bir motora (`core/reactive_calculator.py`) indirildi (DRY). 22 ölü analiz scripti `archive/` dizinine taşındı. |
 | 6 | **Dokümantasyon** | 7/10 | **9/10** | 🟢 +2 | Brooks: *"Conceptual Integrity"* | `DOCS/` altında 5 kapsamlı mühendislik dokümanı oluşturuldu. Notlar için formel şartname şablonu (KURAL/GİRDİ/BEKLENEN ÇIKTI) ve `PROJE_DOKUMANTASYONU.md` ile tam izlenebilirlik sağlandı. |
@@ -62,7 +62,7 @@ Projenin v1.0 denetiminde tespit edilen tüm teknik borç kalemleri ve riskler, 
 | 7 | **Hardcoded Mapping → JSON Config** | Yapılandırma | ✅ **TAMAMLANDI** | Kod içine gömülü EDAŞ özel başlık eşleştirmeleri `config/header_overrides.json` dosyasına taşındı; kod değişikliği yapmadan yeni başlık varyasyonu ekleme esnekliği sağlandı. |
 | 8 | **Notlar Şablon Disiplini** | Şartname | ✅ **TAMAMLANDI** | `DOCS/notlar_sablonu.md` oluşturuldu; yeni iş kurallarının `KURAL / GİRDİ / BEKLENEN ÇIKTI` standardında yazılması zorunlu hale getirildi. |
 | 9 | **Git Branch Stratejisi** | Versiyon Kontrol | ✅ **TAMAMLANDI** | `main` (kararlı / production) ve `dev` (geliştirme) branch ayrımı yapıldı; test edilmemiş kodların canlıya doğrudan müdahalesi engellendi. |
-| 10 | **Şirket İçi Web Erişimi** | Ağ Güvenliği | ✅ **TAMAMLANDI** | Güncel dağıtımda IIS Windows Authentication + AD yetki grubu, HTTPS reverse proxy, loopback Streamlit, açık CORS/XSRF korumaları kullanılır. Ayrıntı: `DEPLOYMENT_INTERNAL.md`. |
+| 10 | **LAN Güvenliği & Web Koruma** | Ağ Güvenliği | ✅ **TAMAMLANDI** | `run.py` 3 çalışma modu (`--local`, `--lan`, `--lan-open`), `app.py` içinde RFC 1918 `_check_ip_whitelist()` kontrolü, Streamlit XSRF koruması aktif, CORS devre dışı. |
 
 ---
 
@@ -135,7 +135,7 @@ Excel "Notlar" sayfası üzerinden yürütülen informal gereksinimler, kabul kr
 | **Birim Test Kapsamı** | 0 birim test, sadece manuel sayı kontrolü | 61 pytest testi, Golden Core regresyon otomasyonu | 🟢 **Otomatize Edildi** |
 | **Paket Bağımlılıkları** | Versiyonsuz serbest kütüphaneler | `requirements.txt` içinde tüm paketler `==` ile donduruldu | 🟢 **Pinlendi** |
 | **Dosya Boyutu Koruması** | Sınır yok, RAM taşma ve DoS riski | 50 MB boyutu sınırı (`MAX_FILE_SIZE_BYTES`) | 🟢 **Sınırlandırıldı** |
-| **Ağ Güvenliği (intranet)** | 0.0.0.0 açık, korumasız | IIS kimlik doğrulaması + AD grubu, loopback arka uç, HTTPS ve CORS/XSRF açık | 🟢 **Sıkılaştırıldı** |
+| **Ağ Güvenliği (LAN)** | 0.0.0.0 açık, korumasız | 3 kademeli başlatma modu, RFC 1918 IP Whitelist, XSRF aktif, CORS kapalı | 🟢 **Sıkılaştırıldı** |
 | **Gereksinim Disiplini** | Informal ve serbest metinli Excel notları | Formel Notlar Şablonu (`DOCS/notlar_sablonu.md`) | 🟢 **Standartlaştırıldı** |
 | **Git Duruşu** | Tek branch (`main`), deneysel kodlar canlıda | `main` (production) + `dev` (development) dalları devrede | 🟢 **Segmentasyona Alındı** |
 

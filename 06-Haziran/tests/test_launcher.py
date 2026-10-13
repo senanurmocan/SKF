@@ -4,8 +4,6 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 import run
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -51,20 +49,19 @@ def test_launcher_defaults_to_localhost(monkeypatch):
     command = _capture_streamlit_command(monkeypatch, [])
 
     assert _option(command, "--server.address") == "127.0.0.1"
-    assert _option(command, "--server.enableCORS") == "true"
+    assert _option(command, "--server.enableCORS") == "false"
     assert _option(command, "--browser.gatherUsageStats") == "false"
 
 
-def test_lan_alias_uses_loopback_with_xsrf_and_cors(monkeypatch):
+def test_lan_mode_enables_xsrf_protection(monkeypatch):
     command = _capture_streamlit_command(monkeypatch, ["--lan"])
 
-    assert _option(command, "--server.address") == "127.0.0.1"
+    assert _option(command, "--server.address") == "0.0.0.0"
     assert _option(command, "--server.enableXsrfProtection") == "true"
-    assert _option(command, "--server.enableCORS") == "true"
 
 
-def test_lan_open_is_rejected(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["run.py", "--lan-open"])
-    with pytest.raises(SystemExit) as error:
-        run.main()
-    assert error.value.code == 2
+def test_lan_open_is_explicit_and_disables_xsrf(monkeypatch):
+    command = _capture_streamlit_command(monkeypatch, ["--lan-open"])
+
+    assert _option(command, "--server.address") == "0.0.0.0"
+    assert _option(command, "--server.enableXsrfProtection") == "false"
