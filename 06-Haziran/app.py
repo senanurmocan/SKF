@@ -57,7 +57,7 @@ def uses_browser_file_inputs() -> bool:
 
 
 st.set_page_config(
-    page_title="CK Enerji - EDAŞ Fatura Veri Portalı",
+    page_title="CK Enerji - EDAŞ Fatura Veri Portalı 1.2",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -5293,7 +5293,7 @@ def main() -> None:
 
     header_left, header_right = st.columns([4, 2], gap="small", vertical_alignment="top")
     with header_left:
-        st.markdown('<div class="ck-title">⚡ CK Enerji EDAŞ Fatura Veri Portalı</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ck-title">⚡ CK Enerji EDAŞ Fatura Veri Portalı 1.2</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="ck-subtitle">21 dağıtım bölgesi için dinamik veri çıkarma, '
             'ETSO birleştirme ve kurumsal Excel raporu</div>',
