@@ -4372,33 +4372,15 @@ def render_browser_excel_picker(
 
 def render_browser_sidebar_inputs() -> tuple[str, str, str]:
     st.sidebar.markdown("**📁 Dağıtım Şirketi SKF**")
-    upload_mode = st.sidebar.radio(
-        "Dağıtım dosyalarını seçme biçimi",
-        ("Klasör", "ZIP"),
-        horizontal=True,
-        key="distribution_upload_mode",
-        label_visibility="collapsed",
+    uploaded_zip = st.sidebar.file_uploader(
+        "Dağıtım klasörünü ZIP olarak seçin",
+        type=["zip"],
+        key="browser_upload_distribution_zip",
+        max_upload_size=200,
+        help="Bölge klasörlerinin yapısını tek bir ZIP dosyasında koruyarak yükleyin.",
     )
-    if upload_mode == "Klasör":
-        uploaded_files = st.sidebar.file_uploader(
-            "Dağıtım klasörünü seçin",
-            type=["xlsx", "xls", "xml", "html"],
-            accept_multiple_files="directory",
-            key="browser_upload_distribution_directory",
-            max_upload_size=50,
-            help="Bölge klasörlerinin bulunduğu ana klasörü seçin; alt klasörler de alınır.",
-        )
-        kind = "directory"
-    else:
-        uploaded_zip = st.sidebar.file_uploader(
-            "Dağıtım klasörünü ZIP olarak seçin",
-            type=["zip"],
-            key="browser_upload_distribution_zip",
-            max_upload_size=200,
-            help="ZIP içinde bölge klasörlerinin yapısını koruyun.",
-        )
-        uploaded_files = [uploaded_zip] if uploaded_zip is not None else []
-        kind = "zip"
+    uploaded_files = [uploaded_zip] if uploaded_zip is not None else []
+    kind = "zip"
     root_folder = synchronize_browser_upload(
         uploaded_files,
         category="distribution",
@@ -4409,9 +4391,7 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         st.sidebar.error(error_message)
     if root_folder and uploaded_files:
         first_name = uploaded_files[0].name.replace("\\", "/")
-        st.session_state["browser_distribution_label"] = (
-            first_name.split("/")[0] if kind == "directory" else Path(first_name).stem
-        )
+        st.session_state["browser_distribution_label"] = Path(first_name).stem
     else:
         st.session_state["browser_distribution_label"] = "SKF"
 

@@ -39,12 +39,10 @@ Excel dosyasını arayüzdeki indirme düğmesiyle alın.
 
 ## Web ve LAN üzerinden dosya seçimi
 
-Streamlit Cloud'da dosyalar tarayıcının açtığı dosya/klasör penceresinden seçilir.
-Dağıtım için bölge klasörlerini içeren ana klasörü seçin. Klasör seçimi kullanılamıyorsa
-aynı klasörü, içindeki bölge klasörlerinin yapısını koruyarak ZIP biçiminde yükleyin.
-Dağıtım dosyalarında `.xlsx`, `.xls`, `.xml` ve `.html` desteklenir. Dağıtım girdilerinde
-dosya başına 50 MB, toplam 400 MB ve 2.000 dosya sınırı uygulanır; ZIP yüklemesi en
-fazla 200 MB olabilir ve açılmış içeriği de aynı sınırlara tabidir.
+Streamlit Cloud'da dağıtım verisini tek ZIP dosyası olarak yükleyin. ZIP içinde bölge
+klasörlerinin yapısını koruyun; tarayıcıya tek dosya gönderildiği için klasör yükleme
+onayı açılmaz. ZIP en fazla 200 MB olabilir; içindeki dosya başına 50 MB, toplam 400 MB
+ve 2.000 dosya sınırları uygulanır. `.xlsx`, `.xls`, `.xml` ve `.html` dosyaları desteklenir.
 
 Bizim Kestiğimiz Faturalar, Uzlaştırma Tüketim, Kesin Liste ve Sistem Kullanım
 Bedelleri için ayrı Excel yükleme alanları vardır. Bizim Kestiğimiz Faturalar,
