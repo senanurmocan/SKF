@@ -32,7 +32,7 @@ SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 ENO_FILE_PREFERENCE = BASE_DIR / "config" / "eno_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
     "https://github.com/senanurmocan/SKF/releases/download/"
-    "v1.2.0/SKF-Yerel-Paket-1.2.0.zip"
+    "v1.2.1/SKF-Yerel-Paket-1.2.1.zip"
 )
 
 
@@ -5281,7 +5281,7 @@ def main() -> None:
             with download_left:
                 st.markdown("### 💻 Windows uygulamasını indir")
                 st.link_button(
-                    "Yerel paketi indir · 1.2.0",
+                    "Yerel paketi indir · 1.2.1",
                     LOCAL_PACKAGE_DOWNLOAD_URL,
                     type="primary",
                     width="stretch",

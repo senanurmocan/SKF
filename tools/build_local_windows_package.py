@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_SOURCE = ROOT / "06-Haziran"
 REQUIREMENTS = APP_SOURCE / "requirements.txt"
-PACKAGE_NAME = "SKF-Yerel-Paket-1.2.0"
+PACKAGE_NAME = "SKF-Yerel-Paket-1.2.1"
 OUTPUT_DIR = ROOT / "dist"
 PACKAGE_ZIP = OUTPUT_DIR / f"{PACKAGE_NAME}.zip"
 PACKAGE_CHECKSUM = OUTPUT_DIR / f"{PACKAGE_NAME}.sha256"
@@ -192,27 +192,27 @@ Teknik bilgiler
 def write_launcher(destination: Path) -> None:
     launcher = r"""@echo off
 setlocal
-chcp 65001 >nul
-title SKF Fatura Veri Portalı (Yerel Kullanım)
+title SKF Local App
 cd /d "%~dp0"
+set "SKF_PACKAGE_ROOT=%~dp0"
 if not exist "%~dp0runtime\python.exe" (
-  echo Bu paketin runtime klasörü bulunamadı. ZIP'i yeniden çıkarın.
+  echo Portable Python runtime not found. Extract the ZIP again.
   pause
   exit /b 1
 )
 set "SKF_FILE_INPUT_MODE=native"
 set "STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
-"%~dp0runtime\python.exe" "%~dp006-Haziran\run.py"
+"%SKF_PACKAGE_ROOT%runtime\python.exe" "%SKF_PACKAGE_ROOT%06-Haziran\run.py"
 set "SKF_EXIT_CODE=%ERRORLEVEL%"
 if not "%SKF_EXIT_CODE%"=="0" (
-  echo Uygulama hata koduyla kapandı: %SKF_EXIT_CODE%
+  echo App closed with error code: %SKF_EXIT_CODE%
   pause
 )
 exit /b %SKF_EXIT_CODE%
 """
     (destination / "SKF'yi Başlat.bat").write_text(
         launcher,
-        encoding="utf-8-sig",
+        encoding="ascii",
         newline="\r\n",
     )
 
