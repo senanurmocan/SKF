@@ -60,3 +60,7 @@ Thumbs.db
 
 # Local project history from the previous repository, if retained for recovery.
 .git.legacy/
+
+# Locally assembled Windows distribution bundles.
+/dist/
+/.local-package-build/

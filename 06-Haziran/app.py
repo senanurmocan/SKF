@@ -30,6 +30,10 @@ if str(BASE_DIR) not in sys.path:
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 ENO_FILE_PREFERENCE = BASE_DIR / "config" / "eno_file.json"
+LOCAL_PACKAGE_DOWNLOAD_URL = (
+    "https://github.com/senanurmocan/SKF/releases/download/"
+    "v1.2.0/SKF-Yerel-Paket-1.2.0.zip"
+)
 
 
 
@@ -5268,6 +5272,31 @@ def main() -> None:
     inject_copy_shortcut_guard()
     inject_corporate_css()
     initialize_session_state()
+
+    if uses_browser_file_inputs():
+        with st.container(border=True):
+            download_left, download_right = st.columns(
+                [3, 7], gap="large", vertical_alignment="center"
+            )
+            with download_left:
+                st.markdown("### 💻 Windows uygulamasını indir")
+                st.link_button(
+                    "Yerel paketi indir · 1.2.0",
+                    LOCAL_PACKAGE_DOWNLOAD_URL,
+                    type="primary",
+                    width="stretch",
+                )
+            with download_right:
+                st.write(
+                    "Bölge dosyalarını bu bilgisayarda seçip birleştirmek için "
+                    "paketi indirin. Dosyalarınız yerelde işlenir; uygulama "
+                    "Python kurulumu gerektirmez."
+                )
+                st.caption(
+                    "ZIP'i çıkarın, `SKF'yi Başlat.bat` dosyasına çift tıklayın. "
+                    "Paket Windows 64-bit içindir."
+                )
+        st.divider()
 
     root_folder, invoice_file, mapping_path, run_button = render_sidebar()
 
