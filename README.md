@@ -37,6 +37,40 @@ Güvenilir yerel ağda paylaşmak için `python run_app.py --lan` kullanılabili
 Uygulama ekranında 21 EDAŞ bölge klasörünün bulunduğu ana dizini seçin. Sonuç
 Excel dosyasını arayüzdeki indirme düğmesiyle alın.
 
+## Web ve LAN üzerinden dosya seçimi
+
+Streamlit Cloud'da dosyalar tarayıcının açtığı dosya/klasör penceresinden seçilir.
+Dağıtım için bölge klasörlerini içeren ana klasörü seçin. Klasör seçimi kullanılamıyorsa
+aynı klasörü, içindeki bölge klasörlerinin yapısını koruyarak ZIP biçiminde yükleyin.
+Dağıtım dosyalarında `.xlsx`, `.xls`, `.xml` ve `.html` desteklenir. Dağıtım girdilerinde
+dosya başına 50 MB, toplam 400 MB ve 2.000 dosya sınırı uygulanır; ZIP yüklemesi en
+fazla 200 MB olabilir ve açılmış içeriği de aynı sınırlara tabidir.
+
+Bizim Kestiğimiz Faturalar, Uzlaştırma Tüketim, Kesin Liste ve Sistem Kullanım
+Bedelleri için ayrı Excel yükleme alanları vardır. Bizim Kestiğimiz Faturalar,
+dağıtım yüklenmeden tek başına işlenebilir. Uzlaştırma dosyası her analizden sonra
+yeniden seçilir. Kaynak değişince önceki analiz sonucu temizlenir.
+
+Yüklemeler her tarayıcı oturumu için ayrı geçici çalışma alanında sunucuda işlenir;
+kalıcı dosya arşivi oluşturulmaz. Sonuçları indirme düğmeleriyle alın.
+Operasyonel faturaları GitHub deposuna eklemeyin.
+
+Windows'ta normal yerel başlatma mevcut yerel seçim pencerelerini kullanır.
+`--lan` ve `--lan-open` tarayıcı yüklemesini kullanır. Linux/Streamlit Cloud için
+tarayıcı yüklemesi varsayılandır. Windows'ta web akışını yerelde denemek için:
+
+```powershell
+$env:SKF_FILE_INPUT_MODE = "browser"
+python run_app.py
+```
+
+Bu değişken `native` olarak ayarlanırsa yerel işletim sistemi pencereleri kullanılır;
+bu mod yalnız uygulamanın çalıştığı bilgisayarda dosya seçmek içindir.
+Cloud giriş dosyası `06-Haziran/app.py`, bağımlılık dosyası
+`06-Haziran/requirements.txt` olmalıdır. Bölge geliştirmeleri
+`feature/region-invoice-summary` kolunda tutulur; Cloud yayınında kullanılacak kol
+ayrıca seçilmelidir.
+
 ## Testler
 
 ```powershell

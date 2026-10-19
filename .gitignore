@@ -56,6 +56,7 @@ Thumbs.db
 **/test_core_output.txt
 06-Haziran/config/system_usage_file.json
 06-Haziran/config/eno_file.json
+06-Haziran/config/reconciliation_consumption_file.json
 
 # Local project history from the previous repository, if retained for recovery.
 .git.legacy/

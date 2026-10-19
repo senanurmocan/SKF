@@ -65,3 +65,36 @@ def test_lan_open_is_explicit_and_disables_xsrf(monkeypatch):
 
     assert _option(command, "--server.address") == "0.0.0.0"
     assert _option(command, "--server.enableXsrfProtection") == "false"
+
+
+def test_lan_uses_browser_uploads_for_remote_users(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(run, "find_free_port", lambda _start: 8505)
+    monkeypatch.setattr(run, "get_local_ip", lambda: "192.168.1.20")
+    monkeypatch.setattr(
+        run.subprocess,
+        "run",
+        lambda command, **kwargs: captured.update(kwargs) or SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(sys, "argv", ["run.py", "--lan"])
+    monkeypatch.setenv("SKF_FILE_INPUT_MODE", "native")
+
+    run.main()
+
+    assert captured["env"]["SKF_FILE_INPUT_MODE"] == "browser"
+
+
+def test_local_launcher_preserves_explicit_input_mode(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(run, "find_free_port", lambda _start: 8505)
+    monkeypatch.setattr(
+        run.subprocess,
+        "run",
+        lambda command, **kwargs: captured.update(kwargs) or SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(sys, "argv", ["run.py"])
+    monkeypatch.setenv("SKF_FILE_INPUT_MODE", "native")
+
+    run.main()
+
+    assert captured["env"]["SKF_FILE_INPUT_MODE"] == "native"

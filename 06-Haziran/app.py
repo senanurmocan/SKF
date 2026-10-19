@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import base64
 import html
+import hashlib
 import io
 import json
 import tempfile
@@ -42,6 +43,17 @@ from extract_and_compare import (  # noqa: E402
     process_all_regions,
     save_to_excel,
 )
+from core.upload_inputs import UploadInputError, UploadWorkspace  # noqa: E402
+
+
+def uses_browser_file_inputs() -> bool:
+    """Use browser uploads on hosted/Linux servers and native dialogs locally."""
+    configured_mode = os.environ.get("SKF_FILE_INPUT_MODE", "auto").strip().casefold()
+    if configured_mode in {"browser", "upload", "web"}:
+        return True
+    if configured_mode in {"native", "local"}:
+        return False
+    return os.name != "nt"
 
 
 st.set_page_config(
@@ -63,6 +75,8 @@ _ALLOWED_PREFIXES = ('127.', '10.', '192.168.', '172.16.', '172.17.',
 
 def _check_ip_whitelist():
     """Streamlit'in query params üzerinden IP kontrolü (bilgilendirme amaçlı)."""
+    if uses_browser_file_inputs():
+        return
     try:
         from streamlit.web.server.websocket_headers import _get_websocket_headers
         headers = _get_websocket_headers()
@@ -1003,11 +1017,15 @@ def initialize_session_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = value
     if "selected_system_usage_file" not in st.session_state:
-        st.session_state["selected_system_usage_file"] = load_system_usage_file_selection()
+        st.session_state["selected_system_usage_file"] = (
+            "" if uses_browser_file_inputs() else load_system_usage_file_selection()
+        )
     if "selected_reconciliation_consumption_file" not in st.session_state:
         st.session_state["selected_reconciliation_consumption_file"] = ""
     if "selected_eno_file" not in st.session_state:
-        st.session_state["selected_eno_file"] = load_eno_file_selection()
+        st.session_state["selected_eno_file"] = (
+            "" if uses_browser_file_inputs() else load_eno_file_selection()
+        )
 
 
 def load_system_usage_file_selection() -> str:
@@ -3918,9 +3936,20 @@ def run_analysis_pipeline(
                     worksheet = preview_workbook[sheet_name]
                     rows = worksheet.iter_rows(values_only=True)
                     headers = next(rows, ())
+                    preview_columns: list[tuple[str, int]] = []
+                    for column_index, header in enumerate(headers):
+                        # The workbook's first blank heading separates its visible
+                        # comparison fields from the tariff lookup helper table.
+                        if is_blank(header):
+                            break
+                        preview_columns.append((str(header).strip(), column_index))
                     for values in rows:
                         if any(value is not None for value in values):
-                            preview_records.append(dict(zip(headers, values)))
+                            preview_records.append({
+                                header: values[column_index]
+                                for header, column_index in preview_columns
+                                if column_index < len(values)
+                            })
             finally:
                 preview_workbook.close()
         preview_df = pd.DataFrame(preview_records)
@@ -4228,12 +4257,183 @@ def render_selection_check(container: Any, is_selected: bool) -> None:
         container.empty()
 
 
-def render_sidebar() -> tuple[str, str, str | None, bool]:
-    logo_path = BASE_DIR / "CK_Enerji_-_Yatay.png"
-    if logo_path.exists():
-        st.sidebar.image(str(logo_path), width="stretch")
+def get_upload_workspace() -> UploadWorkspace:
+    """Keep uploaded inputs private to this browser's Streamlit session."""
+    if "_upload_workspace" not in st.session_state:
+        from new_mapping_parser import parse_mapping_file
 
-    st.sidebar.subheader("📂 Veri Kaynağı")
+        region_names: set[str] = set()
+        mapping_file = BASE_DIR / "SKF Başlıkları.xlsx"
+        if mapping_file.is_file():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    mapping = parse_mapping_file(str(mapping_file))
+                region_names.update(mapping.get("regions", {}))
+                aliases = mapping.get("distribution_names", {})
+                region_names.update(aliases)
+                region_names.update(aliases.values())
+            except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+                # The analysis panel reports an unavailable/invalid mapping separately.
+                pass
+        st.session_state["_upload_workspace"] = UploadWorkspace(region_names=region_names)
+    return st.session_state["_upload_workspace"]
+
+
+def synchronize_browser_upload(
+    uploads: list[Any],
+    *,
+    category: str,
+    selected_key: str,
+    kind: str = "file",
+) -> str:
+    """Materialize changed uploads once and invalidate results when inputs change."""
+    identity_key = f"_upload_identity_{category}"
+    error_key = f"_upload_error_{category}"
+    identity = (
+        (kind, tuple(
+            (
+                getattr(upload, "file_id", None)
+                or hashlib.sha256(upload.getvalue()).hexdigest(),
+                upload.name,
+                upload.size,
+            )
+            for upload in uploads
+        ))
+        if uploads else None
+    )
+    selected_path = st.session_state.get(selected_key, "")
+    changed = identity != st.session_state.get(identity_key)
+    missing_path = bool(uploads and selected_path and not Path(selected_path).exists())
+    if changed or missing_path:
+        new_path = ""
+        error_message = ""
+        workspace = get_upload_workspace()
+        try:
+            if not uploads:
+                workspace.clear(category)
+            elif kind == "directory":
+                new_path = workspace.stage_directory(uploads)
+            elif kind == "zip":
+                new_path = workspace.stage_zip(uploads[0])
+            else:
+                new_path = workspace.stage_file(uploads[0], category)
+        except (UploadInputError, OSError, zipfile.BadZipFile) as error:
+            workspace.clear(category)
+            error_message = str(error) or "Dosya hazırlanamadı. Lütfen yeniden seçin."
+        if new_path != selected_path or changed:
+            clear_analysis_state()
+        st.session_state[selected_key] = new_path
+        st.session_state[identity_key] = identity
+        st.session_state[error_key] = error_message
+        selected_path = new_path
+    return selected_path
+
+
+def synchronize_browser_excel_upload(
+    widget_key: str, category: str, selected_key: str
+) -> None:
+    """Apply widget changes before controls such as the sidebar run button render."""
+    uploaded = st.session_state.get(widget_key)
+    synchronize_browser_upload(
+        [uploaded] if uploaded is not None else [],
+        category=category,
+        selected_key=selected_key,
+    )
+
+
+def render_browser_excel_picker(
+    label: str,
+    *,
+    category: str,
+    selected_key: str,
+    container: Any,
+    help: str | None = None,
+) -> str:
+    generation = st.session_state.get(f"_upload_generation_{category}", 0)
+    widget_key = f"browser_upload_{category}_{generation}"
+    uploaded = container.file_uploader(
+        label,
+        type=["xlsx", "xlsm", "xls"],
+        key=widget_key,
+        help=help,
+        max_upload_size=200,
+        on_change=synchronize_browser_excel_upload,
+        args=(widget_key, category, selected_key),
+    )
+    path = synchronize_browser_upload(
+        [uploaded] if uploaded is not None else [],
+        category=category,
+        selected_key=selected_key,
+    )
+    if error_message := st.session_state.get(f"_upload_error_{category}"):
+        container.error(error_message)
+    return path
+
+
+def render_browser_sidebar_inputs() -> tuple[str, str, str]:
+    st.sidebar.markdown("**📁 Dağıtım Şirketi SKF**")
+    upload_mode = st.sidebar.radio(
+        "Dağıtım dosyalarını seçme biçimi",
+        ("Klasör", "ZIP"),
+        horizontal=True,
+        key="distribution_upload_mode",
+        label_visibility="collapsed",
+    )
+    if upload_mode == "Klasör":
+        uploaded_files = st.sidebar.file_uploader(
+            "Dağıtım klasörünü seçin",
+            type=["xlsx", "xls", "xml", "html"],
+            accept_multiple_files="directory",
+            key="browser_upload_distribution_directory",
+            max_upload_size=50,
+            help="Bölge klasörlerinin bulunduğu ana klasörü seçin; alt klasörler de alınır.",
+        )
+        kind = "directory"
+    else:
+        uploaded_zip = st.sidebar.file_uploader(
+            "Dağıtım klasörünü ZIP olarak seçin",
+            type=["zip"],
+            key="browser_upload_distribution_zip",
+            max_upload_size=200,
+            help="ZIP içinde bölge klasörlerinin yapısını koruyun.",
+        )
+        uploaded_files = [uploaded_zip] if uploaded_zip is not None else []
+        kind = "zip"
+    root_folder = synchronize_browser_upload(
+        uploaded_files,
+        category="distribution",
+        selected_key="selected_root_folder",
+        kind=kind,
+    )
+    if error_message := st.session_state.get("_upload_error_distribution"):
+        st.sidebar.error(error_message)
+    if root_folder and uploaded_files:
+        first_name = uploaded_files[0].name.replace("\\", "/")
+        st.session_state["browser_distribution_label"] = (
+            first_name.split("/")[0] if kind == "directory" else Path(first_name).stem
+        )
+    else:
+        st.session_state["browser_distribution_label"] = "SKF"
+
+    invoice_file = render_browser_excel_picker(
+        "📄 Bizim Kestiğimiz Faturalar",
+        category="invoice",
+        selected_key="selected_invoice_file",
+        container=st.sidebar,
+    )
+    render_reconciliation_consumption_file_picker()
+    selected_eno_file = render_browser_excel_picker(
+        "📄 Kesin Liste (isteğe bağlı)",
+        category="eno",
+        selected_key="selected_eno_file",
+        container=st.sidebar,
+        help="Sayaç ID → EIC ve müşteri eşleştirmesi için Excel dosyasını seçin.",
+    )
+    st.sidebar.caption("Kesin Liste seçilmezse yüklenen dağıtım klasöründe otomatik aranır.")
+    return root_folder, invoice_file, selected_eno_file
+
+
+def render_native_sidebar_inputs() -> tuple[str, str, str]:
     root_folder = st.session_state.get("selected_root_folder", "").strip()
     folder_button, folder_status = st.sidebar.columns([9, 1], gap="small", vertical_alignment="center")
     with folder_button:
@@ -4363,6 +4563,18 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         save_error = save_eno_file_selection(selected_eno_file)
         if save_error:
             st.sidebar.warning("Kesin Liste dosyası seçimi kalıcı olarak kaydedilemedi.")
+    return root_folder, invoice_file, selected_eno_file
+
+
+def render_sidebar() -> tuple[str, str, str | None, bool]:
+    logo_path = BASE_DIR / "CK_Enerji_-_Yatay.png"
+    if logo_path.exists():
+        st.sidebar.image(str(logo_path), width="stretch")
+    st.sidebar.subheader("📂 Veri Kaynağı")
+    if uses_browser_file_inputs():
+        root_folder, invoice_file, selected_eno_file = render_browser_sidebar_inputs()
+    else:
+        root_folder, invoice_file, selected_eno_file = render_native_sidebar_inputs()
     if selected_eno_file and os.path.isfile(selected_eno_file):
         valid_eno_file = True
     elif selected_eno_file:
@@ -4390,6 +4602,15 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         (only_our_invoice_data or not root_folder)
         and bool(invoice_file and valid_invoice_file)
     )
+    upload_categories = ["invoice", "reconciliation", "system_usage"]
+    if not only_our_invoice_data:
+        upload_categories.append("distribution")
+    if not invoice_only_mode:
+        upload_categories.append("eno")
+    valid_browser_uploads = not uses_browser_file_inputs() or not any(
+        st.session_state.get(f"_upload_error_{category}")
+        for category in upload_categories
+    )
     run_button = st.sidebar.button(
         "Yaln\u0131zca Fatura Verisini Haz\u0131rla" if invoice_only_mode else "🚀 Verileri Birleştir ve Karşılaştır",
         type="primary",
@@ -4399,6 +4620,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
             and mapping_path
             and valid_invoice_file
             and (valid_eno_file or invoice_only_mode)
+            and valid_browser_uploads
         ),
     )
 
@@ -4410,7 +4632,13 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
             f"Bulunan aday bölge klasörü: {format_turkish_integer(candidate_count)} / "
             f"{format_turkish_integer(EXPECTED_REGION_COUNT)}"
         )
-    st.sidebar.success("Verileriniz %100 yerelde işlenmektedir, ETSO kodları gizlidir.")
+    if uses_browser_file_inputs():
+        st.sidebar.caption(
+            "Seçtiğiniz dosyalar bu oturum için sunucuya yüklenip işlenir. "
+            "Sonucu Excel olarak indirebilirsiniz."
+        )
+    else:
+        st.sidebar.success("Verileriniz %100 yerelde işlenmektedir, ETSO kodları gizlidir.")
 
 
 
@@ -4422,6 +4650,14 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
 
 
 def render_system_usage_file_picker() -> None:
+    if uses_browser_file_inputs():
+        render_browser_excel_picker(
+            "Sistem Kullanım Bedelleri",
+            category="system_usage",
+            selected_key="selected_system_usage_file",
+            container=st,
+        )
+        return
     selected_file = st.session_state.get("selected_system_usage_file", "")
     spacer, label_column, button_column, status_column = st.columns(
         [4, 2.8, 1.1, 0.8],
@@ -4474,6 +4710,15 @@ def render_system_usage_file_picker() -> None:
 
 
 def render_reconciliation_consumption_file_picker() -> None:
+    if uses_browser_file_inputs():
+        render_browser_excel_picker(
+            "⚖️ Uzlaştırma Tüketim",
+            category="reconciliation",
+            selected_key="selected_reconciliation_consumption_file",
+            container=st.sidebar,
+            help="Bu dosya bir analizde kullanılır; sonraki analiz için yeniden seçin.",
+        )
+        return
     selected_file = st.session_state.get("selected_reconciliation_consumption_file", "")
     button_column, status_column = st.sidebar.columns(
         [6, 0.8],
@@ -4766,6 +5011,12 @@ def render_analysis_panel(
             st.session_state["processing_logs"] = logs
             if selected_reconciliation_consumption_file:
                 st.session_state["selected_reconciliation_consumption_file"] = ""
+                if uses_browser_file_inputs():
+                    get_upload_workspace().clear("reconciliation")
+                    generation_key = "_upload_generation_reconciliation"
+                    st.session_state[generation_key] = st.session_state.get(generation_key, 0) + 1
+                    st.session_state.pop("_upload_identity_reconciliation", None)
+                    st.session_state.pop("_upload_error_reconciliation", None)
                 current_signature = (*current_signature[:4], "", *current_signature[5:])
             st.session_state["analysis_signature"] = current_signature
             st.session_state["processing_done"] = True
@@ -4995,7 +5246,11 @@ def render_analysis_panel(
         )
     with download_column:
         if output_bytes and not invoice_output_blocked:
-            selected_folder_name = Path(os.path.normpath(root_folder)).name or "SKF"
+            selected_folder_name = (
+                st.session_state.get("browser_distribution_label", "SKF")
+                if uses_browser_file_inputs()
+                else Path(os.path.normpath(root_folder)).name or "SKF"
+            )
             st.download_button(
                 "📥 SKF Dosyasını İndir",
                 data=output_bytes,

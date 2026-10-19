@@ -73,7 +73,12 @@ def main() -> int:
         "--server.enableCORS", "false",
         "--browser.gatherUsageStats", "false",
     ]
-    return subprocess.run(cmd, cwd=os.path.dirname(app_path), check=False).returncode
+    app_environment = os.environ.copy()
+    if args.lan or args.lan_open:
+        app_environment["SKF_FILE_INPUT_MODE"] = "browser"
+    return subprocess.run(
+        cmd, cwd=os.path.dirname(app_path), env=app_environment, check=False
+    ).returncode
 
 
 if __name__ == "__main__":
