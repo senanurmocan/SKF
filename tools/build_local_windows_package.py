@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_SOURCE = ROOT / "06-Haziran"
 REQUIREMENTS = APP_SOURCE / "requirements.txt"
-PACKAGE_VERSION = "1.2.1"
+PACKAGE_VERSION = "1.3"
 PACKAGE_NAME = f"SKF-Yerel-Paket-{PACKAGE_VERSION}"
 OUTPUT_DIR = ROOT / "dist"
 PACKAGE_ZIP = OUTPUT_DIR / f"{PACKAGE_NAME}.zip"
@@ -154,7 +154,7 @@ def copy_runtime(destination: Path, site_packages: Path) -> None:
 
 
 def write_package_readme(destination: Path) -> None:
-    readme = """SKF Fatura Veri Portalı — Yerel Windows Paketi
+    readme = f"""SKF Fatura Veri Portalı — Yerel Windows Paketi v{PACKAGE_VERSION}
 
 Başlatma
 1. Bu ZIP'i kullanıcı profilinizde yazma izni olan bir klasöre çıkarın.
@@ -195,7 +195,7 @@ Teknik bilgiler
 def write_launcher(destination: Path) -> None:
     launcher = rf"""@echo off
 setlocal
-title SKF Local App {PACKAGE_VERSION}
+title SKF Local App v{PACKAGE_VERSION}
 cd /d "%~dp0"
 set "SKF_PACKAGE_ROOT=%~dp0"
 if not exist "%~dp0runtime\python.exe" (

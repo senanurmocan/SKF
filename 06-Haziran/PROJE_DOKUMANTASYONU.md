@@ -9,9 +9,9 @@
 > içlerindeki eski yol, mimari, hash ve plan ifadeleri güncel durum olarak
 > yorumlanmamalıdır.
 
-## Güncel Proje Durumu — 10 Kasım 2026
+## Güncel Proje Durumu — 12 Kasım 2026
 
-- **Sürüm ve giriş noktaları:** Uygulama sürümü `1.2.1`; başlatıcı `run_app.py`,
+- **Sürüm ve giriş noktaları:** Uygulama sürümü `v1.3`; başlatıcı `run_app.py`,
   arayüz ve analiz akışı `06-Haziran/app.py`, fatura işleme ve Excel üretimi
   `06-Haziran/extract_and_compare.py` içindedir.
 - **Fatura işleme:** 21 EDAŞ bölgesinden `.xlsx`, `.xls`, `.xml` ve `.html`
@@ -5208,7 +5208,7 @@ dosyasından okunuyor. Kod değişikliği gerektirmeden mapping güncellenebilir
 
 Bu kayıt, bu bölümdeki 24 Eylül sprint maddelerinden sonraki güncel durumu özetler:
 
-- Uygulama `1.2.1` sürümündedir; `run_app.py` başlatıcı, `06-Haziran/app.py`
+- Uygulama `v1.3` sürümündedir; `run_app.py` başlatıcı, `06-Haziran/app.py`
   arayüz ve analiz akışı, `extract_and_compare.py` fatura işleme ve Excel üretimidir.
 - Bölge faturaları başlıklarına göre okunur ve `SKF Başlıkları.xlsx` eşlemeleriyle
   standartlaştırılır. Fatura/dağıtım karşılaştırması ETSO koduna göre yapılır.

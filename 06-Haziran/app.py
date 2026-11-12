@@ -27,12 +27,12 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "v1.3"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
-    f"https://github.com/senanurmocan/SKF/releases/download/v{APP_VERSION}/"
-    f"SKF-Yerel-Paket-{APP_VERSION}.zip"
+    f"https://github.com/senanurmocan/SKF/releases/download/{APP_VERSION}/"
+    f"SKF-Yerel-Paket-{APP_VERSION.removeprefix('v')}.zip"
 )
 
 
@@ -5394,7 +5394,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
     logo_path = BASE_DIR / "CK_Enerji_-_Yatay.png"
     if logo_path.exists():
         st.sidebar.image(str(logo_path), width="stretch")
-    st.sidebar.subheader("📂 Veri Kaynağı")
+    st.sidebar.subheader("📁 Veri Kaynağı")
     if uses_browser_file_inputs():
         root_folder, invoice_file, selected_eno_file = render_browser_sidebar_inputs()
     else:
