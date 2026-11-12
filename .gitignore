@@ -38,7 +38,6 @@ Thumbs.db
 # Keep monthly input, mapping, ENO, and generated output files local.
 **/*.xls
 **/*.xlsx
-!06-Haziran/SKF Başlıkları.xlsx
 **/*.xlsm
 **/*.xlsb
 **/*.csv
@@ -47,6 +46,8 @@ Thumbs.db
 **/*.log
 **/*.XLS
 **/*.XLSX
+!06-Haziran/SKF Başlıkları.xlsx
+!06-Haziran/FaturaDigerEkKalemBedelAktarim_2026_11_10_17_51.xlsx
 **/*.XLSM
 **/*.XLSB
 **/*.CSV
@@ -60,6 +61,7 @@ Thumbs.db
 
 # Local project history from the previous repository, if retained for recovery.
 .git.legacy/
+.versions/
 
 # Locally assembled Windows distribution bundles.
 /dist/

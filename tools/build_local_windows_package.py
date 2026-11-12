@@ -25,7 +25,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_SOURCE = ROOT / "06-Haziran"
 REQUIREMENTS = APP_SOURCE / "requirements.txt"
-PACKAGE_NAME = "SKF-Yerel-Paket-1.2.1"
+PACKAGE_VERSION = "1.2.1"
+PACKAGE_NAME = f"SKF-Yerel-Paket-{PACKAGE_VERSION}"
 OUTPUT_DIR = ROOT / "dist"
 PACKAGE_ZIP = OUTPUT_DIR / f"{PACKAGE_NAME}.zip"
 PACKAGE_CHECKSUM = OUTPUT_DIR / f"{PACKAGE_NAME}.sha256"
@@ -37,6 +38,7 @@ APP_FILES = (
     "run.py",
     "CK_Enerji_-_Yatay.png",
     "SKF Başlıkları.xlsx",
+    "FaturaDigerEkKalemBedelAktarim_2026_11_10_17_51.xlsx",
     "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx",
 )
 CONFIG_JSON_FILES = ("header_overrides.json", "source_header_layouts.json")
@@ -168,7 +170,8 @@ Kullanım ve veri akışı
 - Analiz ve Excel çıktısı bu bilgisayarda hazırlanır.
 - Streamlit kullanım istatistikleri kapalıdır.
 - Kullanıcı dosyaları, seçilmiş dosya yolları ve rapor çıktıları bu ZIP'e dahil
-  edilmez. Seçim tercihleri uygulama klasöründeki config dosyalarına yazılır.
+  edilmez. Sistem Kullanım Bedelleri tercihi config altında saklanır; Kesin Liste
+  seçimi oturum içinde kalır ve uygulama yeniden açıldığında tekrar seçilir.
 - Bu pakette dağıtım faturası, müşteri dosyası veya ETSO listesi bulunmaz.
 
 Güncelleme ve dağıtım
@@ -176,7 +179,7 @@ Güncelleme ve dağıtım
 - Paketi herkese açık GitHub deposuna veya kişisel dosya paylaşım alanlarına
   koymayın; şirketinizin kurum içi kanal ve imza politikasını izleyin.
 - Güncel paket kullanıcı profili altında çalıştırılmalıdır. Program klasörü
-  salt okunursa dosya seçimi tercihleri saklanamayabilir.
+  salt okunursa kalıcı Sistem Kullanım Bedelleri tercihi saklanamayabilir.
 - Windows uygulama denetimi, SmartScreen veya Forcepoint bu paketi engellerse
   BT ekibinizin onaylı imza/allowlist sürecini izleyin.
 
@@ -190,9 +193,9 @@ Teknik bilgiler
 
 
 def write_launcher(destination: Path) -> None:
-    launcher = r"""@echo off
+    launcher = rf"""@echo off
 setlocal
-title SKF Local App
+title SKF Local App {PACKAGE_VERSION}
 cd /d "%~dp0"
 set "SKF_PACKAGE_ROOT=%~dp0"
 if not exist "%~dp0runtime\python.exe" (

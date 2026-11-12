@@ -51,8 +51,8 @@ Mapping ``new_mapping_parser.parse_mapping_file`` ile okunur.
    sıfır tabanlı indekse çevrilir: A=0, Z=25, AA=26; geçersiz değer -1'dir.
 7. Şema özellikleri ``notlar_7``, ``corrections`` ve
    ``extended_financial_fields`` bayraklarıyla taşınır.
-8. Mapping 6 gibi eski bir şema genişletilmiş alan taşımıyorsa eski kayıt
-   anahtarları ve 18 sütunlu Excel aynen korunur.
+ 8. Mapping 6 gibi eski bir şema genişletilmiş alan taşımıyorsa eski kayıt
+    anahtarları korunur; standart Excel çıktısı Sayaç ID alanıyla 19 sütunludur.
 9. ``load_mapping`` tarihsel eski fonksiyondur; üretim akışı
    ``load_mapping_new`` üzerinden parserı kullanır.
 
@@ -211,18 +211,20 @@ Filtre sonrası sıralı gruplamada:
 
 EXCEL ÇIKTI SÖZLEŞMESİ
 ----------------------
-Standart 18 sütun: Dağıtım Bölgesi, ETSO Kodu, Müşteri, Tarife Grubu, AG OG,
-Terim, Güç, Kurulu Güç, Aktif Enerji, Dağıtım Bedeli, Güç Bedeli, Güç Aşım,
-Reaktif, KDV Matrahı, KDV, Toplam, İlk Reaktif, Sayax'a Atılacak Tarife.
+Standart 19 sütun: Dağıtım Bölgesi, Sayaç ID, ETSO Kodu, Müşteri, Tarife Grubu,
+AG OG, Terim, Güç, Kurulu Güç, Aktif Enerji, Dağıtım Bedeli, Güç Bedeli,
+Güç Aşım, Reaktif, KDV Matrahı, KDV, Toplam, İlk Reaktif, Sayax'a Atılacak Tarife.
+Sayaç ID, ENO dosyasının E sütunundan D sütunundaki ETSO/EIC koduna göre alınır;
+eşleşme yoksa boş bırakılır.
 
-Mapping 7 kaydı varsa S=``Standart Dışı Tutar (TL)`` ve son
-T=``Tazminat Bedeli`` eklenir. Formüller her veri satırında aynen::
+Mapping 7 kaydı varsa T=``Standart Dışı Tutar (TL)`` ve son
+U=``Tazminat Bedeli`` eklenir. Formüller her veri satırında aynen::
 
-    N = J + K + L + M
-    O = N * 0.2
-    P = N + O + Q
+    O = K + L + M + N
+    P = O * 0.2
+    Q = O + P + R
 
-İlk Reaktif Q sütununda, Sayax tarife R sütunundadır. S/T alanları KDV/Toplam
+İlk Reaktif R sütununda, Sayax tarife S sütunundadır. T/U alanları KDV/Toplam
 formüllerine dahil edilmez. Sayfa adı ``Çıkarılan Veriler``; ETSO biçimi ``0``;
 sayısal alanlar mevcut muhasebe formatındadır. Kaydetmeden hemen önce her
 sütun maksimum string uzunluğu + 2 genişliğe getirilir. PermissionError'da
@@ -478,7 +480,7 @@ def normalize_etso_kodu(etso_kodu):
 
 # Standart sütunlar
 STANDARD_COLUMNS = [
-    'Dağıtım Bölgesi', 'ETSO Kodu', 'Müşteri', 'Tarife Grubu', 'AG OG',
+    'Dağıtım Bölgesi', 'Sayaç ID', 'ETSO Kodu', 'Müşteri', 'Tarife Grubu', 'AG OG',
     'Terim', 'Güç (kW)', 'Kurulu Güç', 'Aktif Enerji Tüketim (kWh)',
     'Dağıtım Bedeli (TL)', 'Güç Bedeli (TL)', 'Güç Aşım Bedeli (TL)',
     'Reaktif Bedel (TL)', 'KDV Matrahı (TL)', 'KDV', 'Toplam (TL)',
@@ -2626,14 +2628,16 @@ def _find_eno_file(base_path, eno_file_path=None):
 
 
 def _load_eno_lookups(eno_path):
-    """ENO dosyasından iki lookup tablosu oluştur:
+    """ENO dosyasından ETSO, sayaç ID ve abone lookup tabloları oluştur:
     
     1. sayac_id_to_eic: Sayaç ID (E sütunu) → Sayaç EIC Kod (D sütunu)
-    2. eic_to_abone: Sayaç EIC Kod (D sütunu) → Abone Ad-Soyad/Unvan (AD sütunu)
+    2. eic_to_sayac_id: Sayaç EIC Kod (D sütunu) → Sayaç ID (E sütunu)
+    3. eic_to_abone: Sayaç EIC Kod (D sütunu) → Abone Ad-Soyad/Unvan (AD sütunu)
     
     Satır 1: üst başlık (merged), Satır 2: gerçek başlık, Satır 3+: veri
     """
     sayac_id_to_eic = {}  # str(Sayaç ID) → str(EIC Kod)
+    eic_to_sayac_id = {}  # normalized str(EIC Kod) → str(Sayaç ID)
     eic_to_abone = {}     # str(EIC Kod) → str(Abone Ad-Soyad)
     
     try:
@@ -2665,12 +2669,13 @@ def _load_eno_lookups(eno_path):
                         except (ValueError, TypeError):
                             pass
                     sayac_id_to_eic[e_str] = eic_str
+                    eic_to_sayac_id[eic_str.casefold()] = e_str
                 
                 # EIC Kod → Abone Ad-Soyad eşleştirmesi
                 if ad_val is not None:
                     ad_str = str(ad_val).strip()
                     if ad_str:
-                        eic_to_abone[eic_str] = ad_str
+                        eic_to_abone[eic_str.casefold()] = ad_str
         
         wb.close()
         print(f"  [ENO] {row_count} satır okundu: {len(sayac_id_to_eic)} Sayaç ID→EIC, {len(eic_to_abone)} EIC→Abone")
@@ -2678,7 +2683,7 @@ def _load_eno_lookups(eno_path):
     except Exception as e:
         print(f"  [ENO HATA] {eno_path}: {e}")
     
-    return sayac_id_to_eic, eic_to_abone
+    return sayac_id_to_eic, eic_to_sayac_id, eic_to_abone
 
 
 def _merge_eno_collisions(records, converted_record_ids, direct_eic_record_ids):
@@ -2774,7 +2779,8 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
     """Çıktı kayıtlarını ENO dosyasından zenginleştir:
     
     1. ETSO Kodu '40Z' ile başlamıyorsa → ENO'daki Sayaç ID eşleşmesiyle EIC Kod'a çevir
-    2. Müşteri alanı boşsa → EIC Kod ile ENO'dan Abone Ad-Soyad/Unvan getir
+    2. EIC koduyla ENO'dan Sayaç ID alanını kayda ekle
+    3. Müşteri alanı boşsa → EIC Kod ile ENO'dan Abone Ad-Soyad/Unvan getir
     
     Returns:
         dict: Zenginleştirme istatistikleri
@@ -2784,6 +2790,7 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
         'eno_meter_lookup_count': 0,
         'eno_customer_lookup_count': 0,
         'etso_converted': 0,
+        'eno_meter_id_filled': 0,
         'musteri_filled': 0,
         'total_records': len(records),
     }
@@ -2796,7 +2803,7 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
     stats['eno_file'] = os.path.basename(eno_path)
     print(f"\n[ENO] Dosya bulundu: {stats['eno_file']}")
     
-    sayac_id_to_eic, eic_to_abone = _load_eno_lookups(eno_path)
+    sayac_id_to_eic, eic_to_sayac_id, eic_to_abone = _load_eno_lookups(eno_path)
     stats['eno_meter_lookup_count'] = len(sayac_id_to_eic)
     stats['eno_customer_lookup_count'] = len(eic_to_abone)
     
@@ -2849,8 +2856,9 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
             continue
         etso_str = str(etso).strip()
         
-        if etso_str in eic_to_abone:
-            record['Müşteri'] = eic_to_abone[etso_str]
+        eic_key = etso_str.casefold()
+        if eic_key in eic_to_abone:
+            record['Müşteri'] = eic_to_abone[eic_key]
             stats['musteri_filled'] += 1
 
     stats['duplicate_eic_rows_merged'] = _merge_eno_collisions(
@@ -2858,6 +2866,14 @@ def enrich_from_eno_file(records, base_path, eno_file_path=None):
         converted_record_ids,
         direct_eic_record_ids,
     )
+    for record in records:
+        etso_key = str(record.get('Etso Kodu') or '').strip().casefold()
+        meter_id = eic_to_sayac_id.get(etso_key)
+        if meter_id is not None:
+            record['Sayaç ID'] = meter_id
+            stats['eno_meter_id_filled'] += 1
+        else:
+            record.setdefault('Sayaç ID', '')
     stats['total_records'] = len(records)
     
     print(f"  [ENO] ETSO dönüştürülen: {stats['etso_converted']}, Müşteri doldurulan: {stats['musteri_filled']}")
@@ -2914,6 +2930,7 @@ def save_to_excel(data, filepath):
     for idx, row in enumerate(data, start=2):
         output_row = [
             row.get('Dağıtım Bölgesi', ''),
+            row.get('Sayaç ID', ''),
             row.get('Etso Kodu', ''),
             row.get('Müşteri', ''),
             row.get('Tarife Grubu', ''),
@@ -2926,11 +2943,11 @@ def save_to_excel(data, filepath):
             row.get('Güç Bedeli(TL)', ''),
             row.get('Güç Aşım Bedeli (TL)', ''),
             row.get('Reaktif Bedel (TL)', ''),
-            f"=J{idx}+K{idx}+L{idx}+M{idx}",
-            f"=N{idx}*0.2",
-            f"=N{idx}+O{idx}+Q{idx}",
-            row.get('İlk Reaktif', ''),                  # Q: İlk Reaktif Bedeli (TL)
-            row.get("Sayax'a Atılacak Tarife", '')       # R: Sayax'a Atılacak Tarife
+            f"=K{idx}+L{idx}+M{idx}+N{idx}",
+            f"=O{idx}*0.2",
+            f"=O{idx}+P{idx}+R{idx}",
+            row.get('İlk Reaktif', ''),                  # R: İlk Reaktif Bedeli (TL)
+            row.get("Sayax'a Atılacak Tarife", '')       # S: Sayax'a Atılacak Tarife
         ]
         if extended_output_enabled:
             output_row.extend([
@@ -2950,16 +2967,17 @@ def save_to_excel(data, filepath):
             ws.cell(idx, c).alignment = data_align_left
 
         # Number Formatting:
-        # A(1), C(3), D(4), E(5), F(6), R(18) -> General
-        for c in [1, 3, 4, 5, 6, 18]:
+        # A(1), D(4), E(5), F(6), G(7), S(19) -> General
+        for c in [1, 4, 5, 6, 7, 19]:
             if c <= len(output_columns):
                 ws.cell(idx, c).number_format = 'General'
 
-        # B(2) -> Sayı ('0')
-        ws.cell(idx, 2).number_format = '0'
+        # B(2) Sayaç ID metin; C(3) ETSO sayı biçiminde saklanır.
+        ws.cell(idx, 2).number_format = '@'
+        ws.cell(idx, 3).number_format = '0'
 
-        # G(7)..Q(17) -> Virgül Stili (Güç, Kurulu, Aktif, Bedeller, KDV Matrahı, KDV, Toplam)
-        for c in range(7, 18):
+        # H(8)..R(18) -> Virgül Stili (Güç, Kurulu, Aktif, Bedeller, KDV Matrahı, KDV, Toplam)
+        for c in range(8, 19):
             ws.cell(idx, c).number_format = COMMA_STYLE_FORMAT
 
         if extended_output_enabled:

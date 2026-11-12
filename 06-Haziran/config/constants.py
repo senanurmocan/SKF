@@ -15,7 +15,7 @@ SUPPORTED_INPUT_EXTENSIONS = ('.xls', '.xlsx', '.xml', '.html')
 
 # Standart sütunlar
 STANDARD_COLUMNS = [
-    'Dağıtım Bölgesi', 'ETSO Kodu', 'Müşteri', 'Tarife Grubu', 'AG OG',
+    'Dağıtım Bölgesi', 'Sayaç ID', 'ETSO Kodu', 'Müşteri', 'Tarife Grubu', 'AG OG',
     'Terim', 'Güç (kW)', 'Kurulu Güç', 'Aktif Enerji Tüketim (kWh)',
     'Dağıtım Bedeli (TL)', 'Güç Bedeli (TL)', 'Güç Aşım Bedeli (TL)',
     'Reaktif Bedel (TL)', 'KDV Matrahı (TL)', 'KDV', 'Toplam (TL)',

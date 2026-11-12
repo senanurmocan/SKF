@@ -27,12 +27,12 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+APP_VERSION = "1.2.1"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
-ENO_FILE_PREFERENCE = BASE_DIR / "config" / "eno_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
-    "https://github.com/senanurmocan/SKF/releases/download/"
-    "v1.2.1/SKF-Yerel-Paket-1.2.1.zip"
+    f"https://github.com/senanurmocan/SKF/releases/download/v{APP_VERSION}/"
+    f"SKF-Yerel-Paket-{APP_VERSION}.zip"
 )
 
 
@@ -61,7 +61,7 @@ def uses_browser_file_inputs() -> bool:
 
 
 st.set_page_config(
-    page_title="CK Enerji - EDAŞ Fatura Veri Portalı 1.2",
+    page_title=f"CK Enerji - EDAŞ Fatura Veri Portalı {APP_VERSION}",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -100,6 +100,7 @@ EXPECTED_REGION_COUNT = 21
 ANOMALY_MINIMUM_TL = 10_000_000.0
 ABSURD_CORRUPTION_THRESHOLD_TL = 50_000_000_000.0
 OUR_INVOICES_LABEL = "Bizim Kestiğimiz Faturalar"
+FEE_DIFFERENCE_TEMPLATE = BASE_DIR / "FaturaDigerEkKalemBedelAktarim_2026_11_10_17_51.xlsx"
 
 
 
@@ -528,6 +529,21 @@ def inject_corporate_css() -> None:
             padding: .45rem .8rem;
             text-align: left;
         }
+        [data-testid="stSidebar"] :is(
+            .st-key-select_distribution_folder,
+            .st-key-select_our_invoice_file,
+            .st-key-select_reconciliation_consumption_file,
+            .st-key-select_eno_file
+        ) div.stButton > button {
+            box-sizing: border-box;
+            width: 100%;
+            height: 2.55rem;
+            min-height: 2.55rem;
+            padding: 0 .65rem;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
         [data-testid="stSidebar"] div.stButton > button[kind="primary"] {
             min-height: 2.75rem;
             text-align: center;
@@ -657,6 +673,20 @@ def inject_corporate_css() -> None:
             border-color: #ED7D31;
             color: #FFFFFF;
         }
+        .st-key-local_package_download {
+            box-sizing: border-box;
+            width: 100%;
+            margin: 0 0 .75rem 0;
+        }
+        .st-key-local_package_download [data-testid="stCaptionContainer"] {
+            font-size: .76rem;
+            line-height: 1.35;
+        }
+        .st-key-local_package_download div[data-testid="stLinkButton"] a {
+            min-height: 2.2rem;
+            padding: .42rem .7rem;
+            font-size: .9rem;
+        }
         [data-testid="stAlert"], [data-testid="stDataFrame"] {
             border-radius: 10px;
         }
@@ -708,7 +738,7 @@ def select_excel_file_via_dialog(
     dialog_title: str,
     initial_path: str | None = None,
 ) -> str | None:
-    """Open a local Excel picker, starting at the currently selected workbook."""
+    """Open a local Excel picker, optionally starting at a provided workbook."""
     dialog_root = None
     try:
         import tkinter as tk
@@ -1013,6 +1043,10 @@ def initialize_session_state() -> None:
         "comparison_report_warning": None,
         "company_report_selection": None,
         "company_report_generated": False,
+        "fee_difference_transfer_bytes": None,
+        "fee_difference_transfer_signature": None,
+        "fee_difference_transfer_stats": {},
+        "fee_difference_transfer_error": None,
         "processing_logs": [],
         "analysis_signature": None,
 
@@ -1027,9 +1061,7 @@ def initialize_session_state() -> None:
     if "selected_reconciliation_consumption_file" not in st.session_state:
         st.session_state["selected_reconciliation_consumption_file"] = ""
     if "selected_eno_file" not in st.session_state:
-        st.session_state["selected_eno_file"] = (
-            "" if uses_browser_file_inputs() else load_eno_file_selection()
-        )
+        st.session_state["selected_eno_file"] = ""
 
 
 def load_system_usage_file_selection() -> str:
@@ -1066,40 +1098,6 @@ def save_system_usage_file_selection(file_path: str) -> str | None:
     return None
 
 
-def load_eno_file_selection() -> str:
-    try:
-        settings = json.loads(ENO_FILE_PREFERENCE.read_text(encoding="utf-8"))
-        selected_file = settings.get("path") if isinstance(settings, dict) else None
-        if isinstance(selected_file, str) and selected_file.strip():
-            return selected_file.strip()
-    except (OSError, json.JSONDecodeError):
-        pass
-    return ""
-
-
-def save_eno_file_selection(file_path: str) -> str | None:
-    settings: dict[str, Any] = {}
-    try:
-        existing = json.loads(ENO_FILE_PREFERENCE.read_text(encoding="utf-8"))
-        if isinstance(existing, dict):
-            settings = existing
-    except (OSError, json.JSONDecodeError):
-        pass
-
-    settings["path"] = file_path
-    temporary_path = ENO_FILE_PREFERENCE.with_suffix(".tmp")
-    try:
-        temporary_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path.write_text(
-            json.dumps(settings, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        temporary_path.replace(ENO_FILE_PREFERENCE)
-    except OSError as error:
-        return str(error)
-    return None
-
-
 def clear_analysis_state() -> None:
     st.session_state["processing_done"] = False
     st.session_state["extracted_df"] = None
@@ -1112,6 +1110,10 @@ def clear_analysis_state() -> None:
     st.session_state["comparison_report_warning"] = None
     st.session_state["company_report_selection"] = None
     st.session_state["company_report_generated"] = False
+    st.session_state["fee_difference_transfer_bytes"] = None
+    st.session_state["fee_difference_transfer_signature"] = None
+    st.session_state["fee_difference_transfer_stats"] = {}
+    st.session_state["fee_difference_transfer_error"] = None
     st.session_state["processing_logs"] = []
     st.session_state["analysis_signature"] = None
 
@@ -1618,24 +1620,20 @@ def load_region_our_invoice_mapping(
         first_row = rows[0] if rows else ()
         second_row = rows[1] if len(rows) > 1 else ()
         configured_fields: dict[str, dict[str, Any]] = {}
-        for column_index in range(0, min(len(first_row), len(second_row)), 2):
+        for column_index in range(min(len(first_row), len(second_row))):
             field_name = first_row[column_index]
             source_header = second_row[column_index]
-            source_column_letter = (
-                second_row[column_index + 1]
-                if column_index + 1 < len(second_row)
-                else None
-            )
             if field_name is None or source_header is None:
                 continue
-            configured_fields[_normalize_tariff_lookup_key(field_name)] = {
+            normalized_field_name = _normalize_tariff_lookup_key(field_name)
+            # Older mapping sheets had a separate "Sütun" cell beside each
+            # field. Ignore that legacy metadata; source columns are resolved
+            # from the header text in the invoice workbook.
+            if normalized_field_name in {"sutun", "sutunharfi", "kaynaksutun"}:
+                continue
+            configured_fields[normalized_field_name] = {
                 "field_name": str(field_name).strip(),
                 "source_header": str(source_header).strip(),
-                "source_column_letter": (
-                    str(source_column_letter).strip()
-                    if source_column_letter is not None
-                    else ""
-                ),
             }
 
         required_fields = (
@@ -1716,7 +1714,6 @@ def add_region_invoice_summary_worksheet(
 ) -> dict[str, Any]:
     """Aggregate the regional invoice summary by ETSO and create the own-invoice view."""
     from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.utils.cell import column_index_from_string
     from openpyxl.utils import get_column_letter
 
     configured_fields, corrections, mapping_error = load_region_our_invoice_mapping(mapping_path)
@@ -1736,22 +1733,16 @@ def add_region_invoice_summary_worksheet(
     for field_key, definition in configured_fields.items():
         source_header_key = _normalize_tariff_lookup_key(definition["source_header"])
         matches = source_header_columns.get(source_header_key, [])
-        preferred_column = None
-        try:
-            preferred_column = column_index_from_string(
-                definition["source_column_letter"].upper()
-            )
-        except (TypeError, ValueError):
-            pass
-        if preferred_column in matches:
-            source_columns[field_key] = preferred_column
-        elif matches:
+        if matches:
+            # Match on the source header text. Column letters in the mapping
+            # workbook are ignored so reordered source columns still resolve.
             source_columns[field_key] = matches[0]
         else:
             missing_headers.append(definition["source_header"])
     if missing_headers:
         return {
             "comparison_sheet_warning": (
+                f"{source_worksheet.title}: "
                 "B\u00f6lge Bizim Kesti\u011fimiz kayna\u011f\u0131nda e\u015fle\u015ftirilen ba\u015fl\u0131klar bulunamad\u0131: "
                 + ", ".join(missing_headers)
             )
@@ -1771,6 +1762,18 @@ def add_region_invoice_summary_worksheet(
         if "muhasebe" in header_key and "iptal" in header_key and "tarih" in header_key
         for column in matching_columns
     ]
+    service_cycle_column = optional_source_column("Hizmet D\u00f6ng\u00fcs\u00fc")
+    service_route_column = optional_source_column("Hizmet Rotas\u0131")
+    if (service_cycle_column is None) != (service_route_column is None):
+        missing_header = "Hizmet D\u00f6ng\u00fcs\u00fc" if service_cycle_column is None else "Hizmet Rotas\u0131"
+        return {
+            "comparison_sheet_warning": (
+                "B\u00f6lge icmalinde hizmet filtresi uygulanamad\u0131; "
+                f"{missing_header} ba\u015fl\u0131\u011f\u0131 bulunamad\u0131."
+            )
+        }
+    service_filter_applied = service_cycle_column is not None and service_route_column is not None
+    service_filter_value = "T4_BOLGEDISI"
 
     field_names = {
         key: _normalize_tariff_lookup_key(label)
@@ -1804,6 +1807,7 @@ def add_region_invoice_summary_worksheet(
     text_fields = {"customer", "tariff", "connection", "term"}
     aggregates: dict[str, dict[str, Any]] = {}
     included_source_row_count = 0
+    service_filter_excluded_row_count = 0
 
     def etso_key(value: Any) -> str:
         if value is None:
@@ -1821,6 +1825,17 @@ def add_region_invoice_summary_worksheet(
         key = etso_key(etso_value)
         if not key:
             continue
+        if service_filter_applied:
+            service_cycle = source_worksheet.cell(row_index, service_cycle_column).value
+            service_route = source_worksheet.cell(row_index, service_route_column).value
+            if (
+                service_cycle is None
+                or service_route is None
+                or str(service_cycle).strip().casefold() != service_filter_value.casefold()
+                or str(service_route).strip().casefold() != service_filter_value.casefold()
+            ):
+                service_filter_excluded_row_count += 1
+                continue
         included_source_row_count += 1
         aggregate = aggregates.setdefault(
             key,
@@ -1863,7 +1878,7 @@ def add_region_invoice_summary_worksheet(
             aggregate["sums"][field] = aggregate["sums"].get(field, 0.0) + safe_float(value)
             aggregate["sum_counts"][field] = aggregate["sum_counts"].get(field, 0) + 1
 
-    if not aggregates:
+    if not aggregates and not service_filter_applied:
         return {"comparison_sheet_warning": "B\u00f6lge Bizim Kesti\u011fimiz kayna\u011f\u0131nda ETSO kodlu veri sat\u0131r\u0131 bulunamad\u0131."}
 
     title = comparison_sheet_base[:31]
@@ -1958,7 +1973,128 @@ def add_region_invoice_summary_worksheet(
         "region_invoice_source_row_count": included_source_row_count,
         "region_invoice_etso_count": len(aggregates),
         "region_invoice_duplicate_row_count": included_source_row_count - len(aggregates),
+        "region_invoice_service_filter_applied": service_filter_applied,
+        "region_invoice_service_filter_excluded_row_count": service_filter_excluded_row_count,
     }
+
+
+def beautify_output_worksheets(report_workbook: Any) -> None:
+    """Apply consistent readability formatting with cached styles and widths."""
+    from copy import copy
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    header_fill = PatternFill(fill_type="solid", fgColor="305496")
+    alternate_fill = PatternFill(fill_type="solid", fgColor="F3F6FA")
+    body_border = Border(bottom=Side(style="thin", color="D9E1F2"))
+    column_separator = Side(style="thin", color="E1E6EE")
+    numeric_format = '#,##0.00;[Red]-#,##0.00;"-"'
+    numeric_header_terms = ("tl", "kwh", "kw", "bedel", "tuketim", "matrah", "toplam", "fark", "tutar", "kdv")
+    separator_borders: dict[int, Any] = {}
+    alignment_cache: dict[tuple[int, bool], Any] = {}
+
+    def add_column_separator(cell: Any) -> None:
+        border_id = cell._style.borderId if cell.has_style else 0
+        border = separator_borders.get(border_id)
+        if border is None:
+            border = copy(cell.border)
+            border.right = column_separator
+            separator_borders[border_id] = border
+        cell.border = border
+
+    for worksheet in report_workbook.worksheets:
+        max_row = worksheet.max_row
+        max_column = worksheet.max_column
+        if _normalize_tariff_lookup_key(worksheet.title) == _normalize_tariff_lookup_key("Özet"):
+            for row in worksheet.iter_rows(
+                min_row=1,
+                max_row=max(max_row, 1),
+                min_col=1,
+                max_col=max(max_column, 1),
+            ):
+                for cell in row:
+                    add_column_separator(cell)
+            continue
+        if max_row < 1 or max_column < 1:
+            continue
+
+        worksheet.sheet_view.showGridLines = False
+        worksheet.sheet_view.zoomScale = 90
+        if worksheet.freeze_panes is None:
+            worksheet.freeze_panes = "A2"
+        if not worksheet.auto_filter.ref:
+            last_column = get_column_letter(max_column)
+            worksheet.auto_filter.ref = f"A1:{last_column}{max(max_row, 1)}"
+
+        worksheet.row_dimensions[1].height = max(worksheet.row_dimensions[1].height or 0, 36)
+        for cell in worksheet[1]:
+            if cell.value is None:
+                continue
+            if cell.fill.fill_type is None:
+                cell.fill = header_fill
+                cell.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+            else:
+                header_font = copy(cell.font)
+                header_font.bold = True
+                cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            add_column_separator(cell)
+
+        maximum_lengths = [0] * max_column
+        populated_columns = [False] * max_column
+        for cell in worksheet._cells.values():
+            if cell.value is None or cell.data_type == "f":
+                continue
+            column_offset = cell.column - 1
+            maximum_lengths[column_offset] = max(
+                maximum_lengths[column_offset],
+                len(str(cell.value)),
+            )
+            populated_columns[column_offset] = True
+
+        numeric_columns: set[int] = set()
+        for column_index in range(1, max_column + 1):
+            header_value = worksheet.cell(1, column_index).value
+            header_key = _normalize_tariff_lookup_key(header_value) if header_value is not None else ""
+            is_numeric_column = any(term in header_key for term in numeric_header_terms)
+            if is_numeric_column:
+                numeric_columns.add(column_index)
+            column_letter = get_column_letter(column_index)
+            dimension = worksheet.column_dimensions.get(column_letter)
+            if dimension is None:
+                dimension = worksheet.column_dimensions[column_letter]
+            if dimension.hidden:
+                continue
+            if dimension.width is None or dimension.width == 13.0:
+                max_length = maximum_lengths[column_index - 1] if populated_columns[column_index - 1] else 12
+                dimension.width = min(max(max_length + 2, 12), 42)
+            else:
+                dimension.width = min(max(dimension.width, 12), 48)
+
+        for row_index in range(2, max_row + 1):
+            for column_index in range(1, max_column + 1):
+                cell = worksheet.cell(row_index, column_index)
+                add_column_separator(cell)
+                if not cell.value and cell.value != 0:
+                    continue
+                is_numeric_column = column_index in numeric_columns
+                alignment_id = cell._style.alignmentId if cell.has_style else 0
+                alignment_key = (alignment_id, is_numeric_column)
+                alignment = alignment_cache.get(alignment_key)
+                if alignment is None:
+                    alignment = Alignment(
+                        horizontal="right" if is_numeric_column else cell.alignment.horizontal,
+                        vertical="center",
+                        wrap_text=cell.alignment.wrap_text,
+                    )
+                    alignment_cache[alignment_key] = alignment
+                cell.alignment = alignment
+                if is_numeric_column and cell.number_format == "General":
+                    cell.number_format = numeric_format
+                if row_index % 2 == 0 and cell.fill.fill_type is None:
+                    cell.fill = alternate_fill
+                if cell.border.bottom.style is None:
+                    cell.border = body_border
 
 
 def append_selected_invoice_file(
@@ -2012,17 +2148,25 @@ def append_selected_invoice_file(
                     sheet.title,
                     sheet.iter_rows(values_only=False),
                     source_values_workbook[sheet.title],
+                    detect_our_invoice_worksheet_format(sheet),
                 )
                 for sheet in source_workbook.worksheets
             ]
-            for sheet_number, (source_sheet_name, source_rows, source_values_worksheet) in enumerate(source_sheets, start=1):
-                invoice_format = detect_our_invoice_worksheet_format(
-                    source_workbook[source_sheet_name]
+            source_sheets = [sheet for sheet in source_sheets if sheet[3] is not None]
+            if not source_sheets:
+                source_sheet_name = (
+                    source_workbook.worksheets[0].title
+                    if source_workbook.worksheets else Path(file_path).name
                 )
-                if invoice_format is None:
-                    return output_bytes, [], [
-                        f"{source_sheet_name}: Excel ba\u015fl\u0131klar\u0131 desteklenen fatura bi\u00e7imleriyle e\u015fle\u015fmedi."
-                    ], 0
+                return output_bytes, [], [
+                    f"{source_sheet_name}: Excel ba\u015fl\u0131klar\u0131 desteklenen fatura bi\u00e7imleriyle e\u015fle\u015fmedi."
+                ], 0
+            for sheet_number, (
+                source_sheet_name,
+                source_rows,
+                source_values_worksheet,
+                invoice_format,
+            ) in enumerate(source_sheets, start=1):
                 is_region_summary = invoice_format == "region_summary"
                 base_title = OUR_INVOICES_LABEL if sheet_number == 1 else f"{OUR_INVOICES_LABEL} {sheet_number}"
                 title = base_title[:31]
@@ -2097,15 +2241,26 @@ def append_selected_invoice_file(
             import xlrd
 
             source_workbook = xlrd.open_workbook(file_path, on_demand=True)
-            for sheet_number, source_sheet in enumerate(source_workbook.sheets(), start=1):
-                invoice_format = detect_our_invoice_format(
-                    source_sheet.cell_value(0, column_index)
-                    for column_index in range(source_sheet.ncols)
+            source_sheets = [
+                (
+                    source_sheet,
+                    detect_our_invoice_format(
+                        source_sheet.cell_value(0, column_index)
+                        for column_index in range(source_sheet.ncols)
+                    ),
                 )
-                if invoice_format is None:
-                    return output_bytes, [], [
-                        f"{source_sheet.name}: Excel ba\u015fl\u0131klar\u0131 desteklenen fatura bi\u00e7imleriyle e\u015fle\u015fmedi."
-                    ], 0
+                for source_sheet in source_workbook.sheets()
+            ]
+            source_sheets = [sheet for sheet in source_sheets if sheet[1] is not None]
+            if not source_sheets:
+                source_sheet_name = (
+                    source_workbook.sheet_names()[0]
+                    if source_workbook.sheet_names() else Path(file_path).name
+                )
+                return output_bytes, [], [
+                    f"{source_sheet_name}: Excel ba\u015fl\u0131klar\u0131 desteklenen fatura bi\u00e7imleriyle e\u015fle\u015fmedi."
+                ], 0
+            for sheet_number, (source_sheet, invoice_format) in enumerate(source_sheets, start=1):
                 is_region_summary = invoice_format == "region_summary"
                 base_title = OUR_INVOICES_LABEL if sheet_number == 1 else f"{OUR_INVOICES_LABEL} {sheet_number}"
                 title = base_title[:31]
@@ -2175,6 +2330,7 @@ def append_selected_invoice_file(
             for source in imported_sheets
             if source.get("comparison_sheet_name")
         ]
+        comparison_summary_sheet_name = None
         has_distribution_detail = any(
             _normalize_tariff_lookup_key(sheet.title)
             == _normalize_tariff_lookup_key("Da\u011f\u0131t\u0131m\u0131n Kesti\u011fi")
@@ -2187,6 +2343,7 @@ def append_selected_invoice_file(
             )
             if reconciliation_stats.get("reconciliation_sheet_warning"):
                 return output_bytes, [], [reconciliation_stats["reconciliation_sheet_warning"]], 0
+            comparison_summary_sheet_name = reconciliation_stats.get("reconciliation_sheet_name")
             if imported_sheets:
                 imported_sheets[0].update(reconciliation_stats)
 
@@ -2233,6 +2390,10 @@ def append_selected_invoice_file(
                 if imported_sheets:
                     imported_sheets[0]["reconciliation_consumption_warning"] = str(error)
 
+        if comparison_summary_sheet_name:
+            add_our_invoice_summary_columns(report_workbook, comparison_summary_sheet_name)
+
+        beautify_output_worksheets(report_workbook)
         report_workbook.calculation.calcMode = "auto"
         report_workbook.calculation.fullCalcOnLoad = True
         report_workbook.calculation.forceFullCalc = True
@@ -2574,15 +2735,26 @@ def load_reconciliation_consumption_by_etso(
                 if header_row_index is None:
                     continue
                 found_headers = True
-                for row in worksheet.iter_rows(min_row=header_row_index + 1, values_only=True):
-                    draw_value = row[columns["draw"] - 1] if len(row) >= columns["draw"] else None
+                first_column = min(columns.values())
+                last_column = max(columns.values())
+                offsets = {key: column - first_column for key, column in columns.items()}
+                for row in worksheet.iter_rows(
+                    min_row=header_row_index + 1,
+                    min_col=first_column,
+                    max_col=last_column,
+                    values_only=True,
+                ):
+                    draw_value = row[offsets["draw"]] if len(row) > offsets["draw"] else None
                     if _normalize_tariff_lookup_key(draw_value) != "evet":
                         continue
-                    code_value = row[columns["etso"] - 1] if len(row) >= columns["etso"] else None
+                    code_value = row[offsets["etso"]] if len(row) > offsets["etso"] else None
                     code = reconciliation_etso_key(code_value)
                     if not code:
                         continue
-                    consumption_value = row[columns["consumption"] - 1] if len(row) >= columns["consumption"] else None
+                    consumption_value = (
+                        row[offsets["consumption"]]
+                        if len(row) > offsets["consumption"] else None
+                    )
                     aggregates_mwh[code] = aggregates_mwh.get(code, 0.0) + safe_float(consumption_value)
                     qualifying_row_count += 1
             if not found_headers:
@@ -2599,10 +2771,11 @@ def load_reconciliation_consumption_by_etso(
                 header_row_index = None
                 columns: dict[str, int] = {}
                 for row_index in range(min(worksheet.nrows, 12)):
+                    header_values = worksheet.row_values(row_index)
                     normalized = {
-                        _normalize_tariff_lookup_key(worksheet.cell_value(row_index, column_index)): column_index
-                        for column_index in range(worksheet.ncols)
-                        if worksheet.cell_value(row_index, column_index) not in (None, "")
+                        _normalize_tariff_lookup_key(value): column_index
+                        for column_index, value in enumerate(header_values)
+                        if value not in (None, "")
                     }
                     etso_column = next((normalized[name] for name in headers_needed["etso"] if name in normalized), None)
                     draw_column = next((normalized[name] for name in headers_needed["draw"] if name in normalized), None)
@@ -2615,13 +2788,14 @@ def load_reconciliation_consumption_by_etso(
                     continue
                 found_headers = True
                 for row_index in range(header_row_index + 1, worksheet.nrows):
-                    draw_value = worksheet.cell_value(row_index, columns["draw"])
+                    row = worksheet.row_values(row_index)
+                    draw_value = row[columns["draw"]]
                     if _normalize_tariff_lookup_key(draw_value) != "evet":
                         continue
-                    code = reconciliation_etso_key(worksheet.cell_value(row_index, columns["etso"]))
+                    code = reconciliation_etso_key(row[columns["etso"]])
                     if not code:
                         continue
-                    consumption_value = worksheet.cell_value(row_index, columns["consumption"])
+                    consumption_value = row[columns["consumption"]]
                     aggregates_mwh[code] = aggregates_mwh.get(code, 0.0) + safe_float(consumption_value)
                     qualifying_row_count += 1
             if not found_headers:
@@ -2766,11 +2940,30 @@ def add_reconciliation_consumption_columns(
     thin_gray = Side(style="thin", color="D9E1F2")
     row_border = Border(bottom=thin_gray)
     row_alignment = Alignment(vertical="center")
+    own_letter = get_column_letter(own_energy_column)
+    reconciliation_letter = get_column_letter(start_column)
+    distribution_letter = (
+        get_column_letter(distribution_energy_column)
+        if distribution_energy_column is not None else None
+    )
     matched_rows = 0
     unmatched_rows = 0
     unique_matched_codes: set[str] = set()
     own_difference_rows: list[dict[str, Any]] = []
     distribution_difference_rows: list[dict[str, Any]] = []
+
+    def comparison_row_values(row_index: int, value: float) -> dict[str, Any]:
+        return {
+            "ETSO": resolve_cell_value(comparison_sheet, row_index, etso_column),
+            "Dağıtım Şirketi": resolve_cell_value(comparison_sheet, row_index, company_column)
+            if company_column is not None else "-",
+            "Müşteri": resolve_cell_value(comparison_sheet, row_index, customer_column)
+            if customer_column is not None else "-",
+            "Tarife Grubu": resolve_cell_value(comparison_sheet, row_index, tariff_column)
+            if tariff_column is not None else "-",
+            "Uzlaştırma Tüketim (kWh)": value,
+        }
+
     for row_index in range(2, comparison_sheet.max_row + 1):
         code = reconciliation_etso_key(comparison_sheet.cell(row_index, etso_column).value)
         value = consumption_by_etso.get(code) if code else None
@@ -2783,8 +2976,6 @@ def add_reconciliation_consumption_columns(
             matched_rows += 1
             unique_matched_codes.add(code)
 
-        own_letter = get_column_letter(own_energy_column)
-        reconciliation_letter = get_column_letter(start_column)
         own_difference_cell = comparison_sheet.cell(row_index, start_column + 1)
         own_difference_cell.value = (
             f'=IF(AND(ISNUMBER({own_letter}{row_index}),ISNUMBER({reconciliation_letter}{row_index})),'
@@ -2794,29 +2985,20 @@ def add_reconciliation_consumption_columns(
         if distribution_energy_column is None:
             distribution_difference_cell.value = "-"
         else:
-            distribution_letter = get_column_letter(distribution_energy_column)
             distribution_difference_cell.value = (
                 f'=IF(AND(ISNUMBER({distribution_letter}{row_index}),ISNUMBER({reconciliation_letter}{row_index})),'
                 f'{distribution_letter}{row_index}-{reconciliation_letter}{row_index},"-")'
             )
 
         if value is not None:
-            common = {
-                "ETSO": resolve_cell_value(comparison_sheet, row_index, etso_column),
-                "Dağıtım Şirketi": resolve_cell_value(comparison_sheet, row_index, company_column)
-                if company_column is not None else "-",
-                "Müşteri": resolve_cell_value(comparison_sheet, row_index, customer_column)
-                if customer_column is not None else "-",
-                "Tarife Grubu": resolve_cell_value(comparison_sheet, row_index, tariff_column)
-                if tariff_column is not None else "-",
-                "Uzlaştırma Tüketim (kWh)": value,
-            }
+            common = None
             own_energy_value = resolve_cell_value(comparison_sheet, row_index, own_energy_column)
             own_number = numeric_value(own_energy_value)
             reconciliation_number = numeric_value(value)
             if own_number is not None and reconciliation_number is not None:
                 own_difference = own_number - reconciliation_number
                 if abs(own_difference) > 1e-9:
+                    common = comparison_row_values(row_index, value)
                     own_difference_rows.append({
                         **common,
                         "Bizim Kestiğimiz Tüketim (kWh)": own_number,
@@ -2830,6 +3012,8 @@ def add_reconciliation_consumption_columns(
                 if distribution_number is not None and reconciliation_number is not None:
                     distribution_difference = distribution_number - reconciliation_number
                     if abs(distribution_difference) > 1e-9:
+                        if common is None:
+                            common = comparison_row_values(row_index, value)
                         distribution_difference_rows.append({
                             **common,
                             "Dağıtım Tüketim (kWh)": distribution_number,
@@ -3105,6 +3289,72 @@ def render_reconciliation_difference_report_area(
         st.info("Uzlaştırma tüketimiyle farkı bulunan ETSO kaydı yok.")
 
 
+def render_fee_difference_transfer_area(
+    output_bytes: bytes | None,
+    invoice_sources: list[dict[str, Any]],
+) -> None:
+    comparison_available = any(
+        source.get("reconciliation_sheet_name") for source in invoice_sources
+    )
+    if not output_bytes or not comparison_available:
+        return
+
+    st.markdown("#### Diğer Bedel Tablosu")
+    st.caption(
+        "Yalnızca ETSO eşleşen kayıtlar aktarılır. Dağıtım, güç ve güç aşım bedellerinde "
+        "-10 ile +10 TL (dahil) arasındaki farklar; reaktif bedelde 0 TL fark aktarılmaz. "
+        "Tutar, dağıtım bedeli eksi bizim bedelimiz olarak yazılır."
+    )
+    current_signature = st.session_state.get("analysis_signature")
+    if (
+        st.session_state.get("fee_difference_transfer_signature") != current_signature
+        or (
+            not st.session_state.get("fee_difference_transfer_bytes")
+            and not st.session_state.get("fee_difference_transfer_error")
+        )
+    ):
+        st.session_state["fee_difference_transfer_bytes"] = None
+        st.session_state["fee_difference_transfer_stats"] = {}
+        st.session_state["fee_difference_transfer_error"] = None
+        try:
+            transfer_bytes, transfer_stats = build_fee_difference_transfer_workbook(output_bytes)
+            st.session_state["fee_difference_transfer_bytes"] = transfer_bytes
+            st.session_state["fee_difference_transfer_stats"] = transfer_stats
+        except Exception as error:
+            st.session_state["fee_difference_transfer_error"] = (
+                f"Ek kalem bedel aktarımı hazırlanamadı: {type(error).__name__}: {error}"
+            )
+        st.session_state["fee_difference_transfer_signature"] = current_signature
+
+    transfer_error = st.session_state.get("fee_difference_transfer_error")
+    if transfer_error:
+        st.warning(transfer_error)
+        return
+
+    transfer_bytes = st.session_state.get("fee_difference_transfer_bytes")
+    transfer_stats = st.session_state.get("fee_difference_transfer_stats") or {}
+    exported_rows = int(transfer_stats.get("exported_rows", 0))
+    st.download_button(
+        f"Ek Kalem Bedel Farklarını İndir ({format_turkish_integer(exported_rows)} satır)",
+        data=transfer_bytes or b"",
+        file_name="FaturaDigerEkKalemBedelAktarim.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="fee_difference_transfer_download",
+        width="stretch",
+        disabled=not transfer_bytes,
+        on_click="ignore",
+    )
+    if exported_rows == 0:
+        st.info("Aktarım kurallarına uyan ve Sayaç ID bilgisi bulunan bedel farkı yok.")
+    skipped_missing_meter_id = int(transfer_stats.get("skipped_missing_meter_id", 0))
+    if skipped_missing_meter_id:
+        st.warning(
+            f"Sayaç ID bilgisi bulunamadığı veya tekil eşleşmediği için "
+            f"{format_turkish_integer(skipped_missing_meter_id)} "
+            "fark satırı aktarım dışında kaldı."
+        )
+
+
 def add_invoice_distribution_comparison_worksheet(
     report_workbook: Any,
     comparison_sheet_names: list[str],
@@ -3147,6 +3397,7 @@ def add_invoice_distribution_comparison_worksheet(
         "company": ("Dağıtım Bölgesi", "Dağıtım Şirketi"),
         "etso": ("ETSO Kodu", "Etso Kodu", "ETSO", "Etso"),
         "customer": ("Müşteri", "Ünvan"),
+        "tariff": ("Tarife Grubu",),
         "abone": ("Abone Grubu", "Tarife Grubu"),
         "term": ("Terim Tipi", "TERİM", "Terim"),
         "connection": ("Bağlantı Tipi", "AG OG"),
@@ -3179,7 +3430,7 @@ def add_invoice_distribution_comparison_worksheet(
         "reactive_fee": ("Reaktif Bedel (TL)",),
     }
 
-    detail_optional = {"abone", "power"}
+    detail_optional = {"abone", "power", "tariff"}
     detail_missing = [
         key for key, column in detail_column_map.items()
         if column is None and key not in detail_optional
@@ -3274,9 +3525,10 @@ def add_invoice_distribution_comparison_worksheet(
         suffix += 1
     worksheet = report_workbook.create_sheet(title)
 
-    headers = ["Dağıtım Şirketi", "ETSO", "Müşteri", "Tarife Grubu"]
-    header_roles = ["identity", "identity", "identity", "ours"]
+    headers = ["Dağıtım Şirketi", "ETSO", "Müşteri"]
+    header_roles = ["identity", "identity", "identity"]
     specs = [
+        ("Tarife Grubu", "Tarife Grubu Dağıtım", None, "tariff", "tariff"),
         ("Terim Tipi", "Terim Tipi Dağıtım", None, "term", "term"),
         ("Bağlantı Tipi", "Bağlantı Tipi Dağıtım", None, "connection", "connection"),
         ("Aktif Enerji Tüketim (kWh)", "Aktif Enerji Tüketim (kWh) Dağıtım", None, "energy", "energy"),
@@ -3290,22 +3542,26 @@ def add_invoice_distribution_comparison_worksheet(
         and detail_column_map.get("abone") is not None
         for _, _, invoice_column_map, _, _ in comparisons
     ):
-        specs.insert(0, ("Abone Grubu", "Abone Grubu Dağıtım", None, "abone", "abone"))
+        specs.insert(1, ("Abone Grubu", "Abone Grubu Dağıtım", None, "abone", "abone"))
     if all(
         invoice_column_map.get("power") is not None
         and detail_column_map.get("power") is not None
         for _, _, invoice_column_map, _, _ in comparisons
     ):
-        specs.insert(3 if specs and specs[0][3] == "abone" else 2, ("Güç kWh", "Güç kWh Dağıtım", None, "power", "power"))
-    value_columns: dict[str, tuple[int, int, int | None]] = {}
+        specs.insert(4 if specs[1][3] == "abone" else 3, ("Güç kWh", "Güç kWh Dağıtım", None, "power", "power"))
+    value_columns: dict[str, tuple[int, int | None, int | None]] = {}
     numeric_columns: set[int] = set()
-    for own_header, distribution_header, difference_header, own_key, distribution_key in specs:
+    for spec_index, (own_header, distribution_header, difference_header, own_key, distribution_key) in enumerate(specs):
         own_column = len(headers) + 1
         headers.append(own_header)
-        header_roles.append("ours")
-        distribution_column = len(headers) + 1
-        headers.append(distribution_header)
-        header_roles.append("distribution")
+        # Drop the original E column: hide the distribution-side value for the
+        # first paired field while retaining its comparison logic below.
+        distribution_column = None
+        header_roles.append("identity" if spec_index == 0 else "ours")
+        if spec_index != 0:
+            distribution_column = len(headers) + 1
+            headers.append(distribution_header)
+            header_roles.append("distribution")
         difference_column = None
         if difference_header:
             difference_column = len(headers) + 1
@@ -3313,10 +3569,19 @@ def add_invoice_distribution_comparison_worksheet(
             header_roles.append("difference")
             numeric_columns.add(difference_column)
         if own_key in {"power", "energy", "distribution_fee", "power_fee", "power_overrun_fee", "reactive_fee"}:
-            numeric_columns.update((own_column, distribution_column))
+            numeric_columns.add(own_column)
+            if distribution_column is not None:
+                numeric_columns.add(distribution_column)
         value_columns[own_key] = (own_column, distribution_column, difference_column)
     headers.append("ETSO Eşleşmesi")
     header_roles.append("match")
+    hidden_abone_distribution_column = None
+    if specs[0][3] == "abone":
+        hidden_abone_distribution_column = len(headers) + 1
+        worksheet.cell(1, hidden_abone_distribution_column, "Abone Grubu Dağıtım")
+        worksheet.column_dimensions[
+            get_column_letter(hidden_abone_distribution_column)
+        ].hidden = True
 
     for column, value in enumerate(headers, start=1):
         cell = worksheet.cell(1, column, value)
@@ -3337,6 +3602,7 @@ def add_invoice_distribution_comparison_worksheet(
     body_alignment = Alignment(vertical="center")
     body_fills = {
         "ours": PatternFill(fill_type="solid", fgColor="F2E6D9"),
+        "distribution": PatternFill(fill_type="solid", fgColor="FCE4D6"),
         "difference": PatternFill(fill_type="solid", fgColor="FFF2CC"),
     }
     mismatch_fill = PatternFill(fill_type="solid", fgColor="FFFF00")
@@ -3437,7 +3703,6 @@ def add_invoice_distribution_comparison_worksheet(
             worksheet.cell(output_row, 1, "Bilinmeyen Dağıtım Şirketi")
         write_source_value(worksheet.cell(output_row, 2), invoice_sheet, invoice_row, invoice_columns["etso"])
         write_source_value(worksheet.cell(output_row, 3), invoice_sheet, invoice_row, invoice_columns["customer"])
-        write_source_value(worksheet.cell(output_row, 4), invoice_sheet, invoice_row, invoice_columns["tariff"])
 
         for _, _, _, own_key, distribution_key in specs:
             own_column, distribution_column, difference_column = value_columns[own_key]
@@ -3449,16 +3714,19 @@ def add_invoice_distribution_comparison_worksheet(
                 normalize_invoice_subscription_group if own_key == "abone" else None,
                 0 if difference_column is not None else "-",
             )
-            if distribution_row is not None:
-                write_source_value(
-                    worksheet.cell(output_row, distribution_column),
-                    detail_sheet,
-                    distribution_row,
-                    detail_column_map[distribution_key],
-                    blank_value=0 if difference_column is not None else "-",
-                )
-            elif difference_column is not None:
-                worksheet.cell(output_row, distribution_column, 0)
+            if distribution_column is not None:
+                if distribution_row is not None and detail_column_map.get(distribution_key) is not None:
+                    write_source_value(
+                        worksheet.cell(output_row, distribution_column),
+                        detail_sheet,
+                        distribution_row,
+                        detail_column_map[distribution_key],
+                        blank_value=0 if difference_column is not None else "-",
+                    )
+                elif difference_column is None:
+                    worksheet.cell(output_row, distribution_column, "-")
+                else:
+                    worksheet.cell(output_row, distribution_column, 0)
             if difference_column is not None:
                 own_letter = get_column_letter(own_column)
                 distribution_letter = get_column_letter(distribution_column)
@@ -3470,14 +3738,29 @@ def add_invoice_distribution_comparison_worksheet(
 
             if (
                 distribution_row is not None
+                and own_column > 4
                 and own_key in {"abone", "term", "connection", "power"}
+                and detail_column_map.get(distribution_key) is not None
                 and compare_source_values(
                     invoice_sheet.cell(invoice_row, invoice_columns[own_key]).value,
                     detail_sheet.cell(distribution_row, detail_column_map[distribution_key]).value,
                     own_key,
                 )
             ):
-                mismatched_columns.update((own_column, distribution_column))
+                mismatched_columns.add(own_column)
+                if distribution_column is not None:
+                    mismatched_columns.add(distribution_column)
+
+        if hidden_abone_distribution_column is not None:
+            if distribution_row is not None and detail_column_map.get("abone") is not None:
+                write_source_value(
+                    worksheet.cell(output_row, hidden_abone_distribution_column),
+                    detail_sheet,
+                    distribution_row,
+                    detail_column_map["abone"],
+                )
+            else:
+                worksheet.cell(output_row, hidden_abone_distribution_column, "-")
 
         if (
             distribution_row is not None
@@ -3527,11 +3810,13 @@ def add_invoice_distribution_comparison_worksheet(
 
     worksheet.freeze_panes = "E2"
     worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(comparisons) + 1)}"
-    worksheet.sheet_view.showGridLines = True
+    worksheet.sheet_view.showGridLines = False
     worksheet.row_dimensions[1].height = 38
-    widths = [28, 23, 42, 30]
-    for _, _, difference_header, _, _ in specs:
-        widths.extend([23, 25])
+    widths = [28, 23, 42]
+    for spec_index, (_, _, difference_header, _, _) in enumerate(specs):
+        widths.append(23)
+        if spec_index != 0:
+            widths.append(25)
         if difference_header:
             widths.append(21)
     widths.append(22)
@@ -3818,6 +4103,356 @@ def build_company_comparison_reports(
         source_workbook.close()
 
 
+def build_fee_difference_transfer_workbook(
+    output_bytes: bytes,
+) -> tuple[bytes, dict[str, int]]:
+    """Create the single-sheet extra-fee transfer workbook from matched fee differences."""
+    from copy import copy
+    from openpyxl import load_workbook
+    from openpyxl.utils import column_index_from_string
+
+    source_workbook = load_workbook(io.BytesIO(output_bytes), data_only=False)
+    cached_workbook = load_workbook(io.BytesIO(output_bytes), data_only=True)
+    template_workbook = None
+    try:
+        comparison_sheet = next(
+            (
+                sheet for sheet in source_workbook.worksheets
+                if _normalize_tariff_lookup_key(sheet.title).startswith(
+                    _normalize_tariff_lookup_key("Karşılaştırma")
+                )
+            ),
+            None,
+        )
+        detail_sheet = next(
+            (
+                sheet for sheet in source_workbook.worksheets
+                if _normalize_tariff_lookup_key(sheet.title)
+                == _normalize_tariff_lookup_key("Dağıtımın Kestiği")
+            ),
+            None,
+        )
+        if comparison_sheet is None or detail_sheet is None:
+            raise ValueError(
+                "Dağıtım karşılaştırması veya dağıtım detay sayfası bulunamadı."
+            )
+        if not FEE_DIFFERENCE_TEMPLATE.is_file():
+            raise FileNotFoundError(
+                f"Ek kalem aktarım şablonu bulunamadı: {FEE_DIFFERENCE_TEMPLATE.name}"
+            )
+
+        template_workbook = load_workbook(FEE_DIFFERENCE_TEMPLATE)
+        transfer_sheet = template_workbook.worksheets[0]
+        id_sheet = next(
+            (
+                sheet for sheet in template_workbook.worksheets
+                if _normalize_tariff_lookup_key(sheet.title) == "id"
+            ),
+            None,
+        )
+        if id_sheet is None:
+            raise ValueError("Şablonun ID sayfası bulunamadı.")
+
+        def header_columns(worksheet: Any) -> dict[str, int]:
+            return {
+                _normalize_tariff_lookup_key(cell.value): cell.column
+                for cell in worksheet[1]
+                if cell.value is not None
+            }
+
+        def find_column(headers: dict[str, int], *aliases: str) -> int | None:
+            return next(
+                (
+                    headers[_normalize_tariff_lookup_key(alias)]
+                    for alias in aliases
+                    if _normalize_tariff_lookup_key(alias) in headers
+                ),
+                None,
+            )
+
+        id_headers = header_columns(id_sheet)
+        id_type_column = find_column(id_headers, "Fark Tipi")
+        id_fee_column = find_column(id_headers, "Bedel Tipi")
+        id_code_column = find_column(id_headers, "Kalem ID")
+        if not all((id_type_column, id_fee_column, id_code_column)):
+            raise ValueError("ID sayfasında Fark Tipi, Bedel Tipi veya Kalem ID başlığı eksik.")
+
+        template_mappings: dict[str, tuple[Any, Any]] = {}
+        for row_index in range(2, id_sheet.max_row + 1):
+            difference_type = id_sheet.cell(row_index, id_type_column).value
+            if is_blank(difference_type):
+                continue
+            template_mappings[_normalize_tariff_lookup_key(difference_type)] = (
+                id_sheet.cell(row_index, id_fee_column).value,
+                id_sheet.cell(row_index, id_code_column).value,
+            )
+
+        fee_specs = [
+            (
+                "Dağıtım Bedeli Fark",
+                ("Dağıtım Bedeli Fark",),
+                ("Dağıtım Bedeli Fark",),
+                False,
+            ),
+            (
+                "Güç Bedeli Farkı",
+                ("Güç Bedeli Fark", "Güç Bedeli Farkı"),
+                ("Güç Bedeli Farkı", "Güç Bedeli Fark"),
+                False,
+            ),
+            (
+                "Güç Aşım Bedeli Tenzil",
+                ("Güç Aşım Bedeli Fark", "Güç Aşım Bedeli Tenzil"),
+                ("Güç Aşım Bedeli Tenzil", "Güç Aşım Bedeli Fark"),
+                False,
+            ),
+            (
+                "Reaktif Bedel Fark",
+                ("Reaktif Bedel Fark",),
+                ("Reaktif Bedel Fark",),
+                True,
+            ),
+        ]
+        resolved_fee_specs: list[tuple[int, Any, Any, bool]] = []
+        comparison_headers = header_columns(comparison_sheet)
+        for template_key, difference_aliases, mapping_aliases, is_reactive in fee_specs:
+            difference_column = find_column(comparison_headers, *difference_aliases)
+            mapping = next(
+                (
+                    template_mappings[_normalize_tariff_lookup_key(alias)]
+                    for alias in mapping_aliases
+                    if _normalize_tariff_lookup_key(alias) in template_mappings
+                ),
+                None,
+            )
+            if difference_column is None:
+                raise ValueError(f"Karşılaştırma sayfasında {template_key} sütunu bulunamadı.")
+            if mapping is None:
+                raise ValueError(f"ID sayfasında {template_key} eşleşmesi bulunamadı.")
+            resolved_fee_specs.append((difference_column, mapping[0], mapping[1], is_reactive))
+
+        comparison_etso_column = find_column(comparison_headers, "ETSO", "ETSO Kodu")
+        comparison_customer_column = find_column(comparison_headers, "Müşteri", "Ünvan")
+        comparison_status_column = find_column(comparison_headers, "ETSO Eşleşmesi")
+        detail_headers = header_columns(detail_sheet)
+        detail_etso_column = find_column(detail_headers, "ETSO Kodu", "ETSO")
+        detail_customer_column = find_column(detail_headers, "Müşteri", "Ünvan")
+        detail_meter_column = find_column(detail_headers, "Sayaç ID", "Sayac ID")
+        if not all(
+            (
+                comparison_etso_column,
+                comparison_customer_column,
+                comparison_status_column,
+                detail_etso_column,
+                detail_customer_column,
+                detail_meter_column,
+            )
+        ):
+            raise ValueError("Karşılaştırma veya dağıtım sayfasında gerekli ID/eşleşme sütunları eksik.")
+
+        def meter_text(value: Any) -> str | None:
+            if is_blank(value):
+                return None
+            if isinstance(value, float) and value.is_integer():
+                return str(int(value))
+            return str(value).strip()
+
+        distribution_rows_by_etso: dict[str, list[tuple[str, str | None]]] = {}
+        for row_index in range(2, detail_sheet.max_row + 1):
+            etso = reconciliation_etso_key(detail_sheet.cell(row_index, detail_etso_column).value)
+            customer = _normalize_tariff_lookup_key(
+                detail_sheet.cell(row_index, detail_customer_column).value
+            )
+            if not etso:
+                continue
+            meter_id = meter_text(detail_sheet.cell(row_index, detail_meter_column).value)
+            distribution_rows_by_etso.setdefault(etso, []).append((customer, meter_id))
+
+        def cached_cell_value(sheet_name: str, row: int, column: int) -> Any:
+            if sheet_name not in cached_workbook.sheetnames:
+                return None
+            return cached_workbook[sheet_name].cell(row, column).value
+
+        def resolve_reference(reference: str, current_sheet: Any, depth: int) -> Any:
+            qualified = re.fullmatch(
+                r"(?:'((?:[^']|'')+)'|([^!]+))!\$?([A-Z]{1,3})\$?(\d+)",
+                reference.strip(),
+            )
+            if qualified:
+                quoted_name, plain_name, column_letters, row_text = qualified.groups()
+                sheet_name = quoted_name.replace("''", "'") if quoted_name else plain_name.strip()
+                if sheet_name not in source_workbook.sheetnames:
+                    return None
+                return resolve_cell(
+                    source_workbook[sheet_name],
+                    int(row_text),
+                    column_index_from_string(column_letters),
+                    depth + 1,
+                )
+            local = re.fullmatch(r"\$?([A-Z]{1,3})\$?(\d+)", reference.strip())
+            if local:
+                column_letters, row_text = local.groups()
+                return resolve_cell(
+                    current_sheet,
+                    int(row_text),
+                    column_index_from_string(column_letters),
+                    depth + 1,
+                )
+            return None
+
+        resolved_cells: dict[tuple[str, int, int], Any] = {}
+        resolving_cells: set[tuple[str, int, int]] = set()
+
+        def resolve_cell(worksheet: Any, row: int, column: int, depth: int = 0) -> Any:
+            cell_key = (worksheet.title, row, column)
+            if cell_key in resolved_cells:
+                return resolved_cells[cell_key]
+            if depth > 20 or cell_key in resolving_cells:
+                return None
+            resolving_cells.add(cell_key)
+            value = worksheet.cell(row, column).value
+            resolved = value
+            if isinstance(value, str) and value.startswith("="):
+                formula = value.strip()
+                wrapped_reference = re.fullmatch(
+                    r'=IF\(OR\((.+)="",\1="-"\),(.+),\1\)',
+                    formula,
+                )
+                difference = re.fullmatch(
+                    r"=\$?([A-Z]{1,3})\$?(\d+)-\$?([A-Z]{1,3})\$?(\d+)",
+                    formula,
+                )
+                if wrapped_reference:
+                    source_value = resolve_reference(wrapped_reference.group(1), worksheet, depth)
+                    fallback = wrapped_reference.group(2).strip()
+                    if fallback.startswith('"') and fallback.endswith('"'):
+                        fallback_value: Any = fallback[1:-1].replace('""', '"')
+                    else:
+                        try:
+                            fallback_value = float(fallback)
+                        except ValueError:
+                            fallback_value = fallback
+                    resolved = (
+                        fallback_value
+                        if source_value is None
+                        or (isinstance(source_value, str) and source_value.strip() in {"", "-"})
+                        else source_value
+                    )
+                elif difference:
+                    left_column, left_row, right_column, right_row = difference.groups()
+                    left_value = resolve_cell(
+                        worksheet, int(left_row), column_index_from_string(left_column), depth + 1
+                    )
+                    right_value = resolve_cell(
+                        worksheet, int(right_row), column_index_from_string(right_column), depth + 1
+                    )
+                    resolved = (
+                        safe_float(left_value) - safe_float(right_value)
+                        if left_value is not None and right_value is not None
+                        else None
+                    )
+                else:
+                    resolved = resolve_reference(formula[1:], worksheet, depth)
+                    if resolved is None:
+                        resolved = cached_cell_value(worksheet.title, row, column)
+            resolving_cells.discard(cell_key)
+            resolved_cells[cell_key] = resolved
+            return resolved
+
+        transfer_headers = header_columns(transfer_sheet)
+        required_transfer_headers = (
+            "Pmum ID", "Kalem ID", "Bedel Tipi", "Tuketim", "Birim Fiyat", "Tutar", "Aciklama", "Makbuz No"
+        )
+        transfer_columns = [find_column(transfer_headers, header) for header in required_transfer_headers]
+        if any(column is None for column in transfer_columns):
+            raise ValueError("Şablonun aktarım başlıkları beklenen biçimde değil.")
+
+        style_prototype = {
+            column: copy(transfer_sheet.cell(2, column)._style)
+            for column in transfer_columns
+        }
+        prototype_height = transfer_sheet.row_dimensions[2].height
+        exported_rows: list[tuple[Any, Any, Any, float]] = []
+        stats = {
+            "exported_rows": 0,
+            "skipped_unmatched_rows": 0,
+            "skipped_small_differences": 0,
+            "skipped_zero_reactive_differences": 0,
+            "skipped_missing_meter_id": 0,
+            "skipped_unresolved_differences": 0,
+        }
+        for row_index in range(2, comparison_sheet.max_row + 1):
+            match_status = comparison_sheet.cell(row_index, comparison_status_column).value
+            if _normalize_tariff_lookup_key(match_status) != _normalize_tariff_lookup_key("Eşleşti"):
+                stats["skipped_unmatched_rows"] += 1
+                continue
+            etso = reconciliation_etso_key(
+                comparison_sheet.cell(row_index, comparison_etso_column).value
+            )
+            customer = _normalize_tariff_lookup_key(
+                comparison_sheet.cell(row_index, comparison_customer_column).value
+            )
+            distribution_matches = distribution_rows_by_etso.get(etso, [])
+            if len(distribution_matches) == 1:
+                meter_id = distribution_matches[0][1]
+            elif len(distribution_matches) > 1 and customer:
+                customer_matches = [
+                    meter for customer_key, meter in distribution_matches if customer_key == customer
+                ]
+                meter_id = customer_matches[0] if len(customer_matches) == 1 else None
+            else:
+                meter_id = None
+
+            for difference_column, fee_type, item_id, is_reactive in resolved_fee_specs:
+                raw_difference = resolve_cell(comparison_sheet, row_index, difference_column)
+                if raw_difference is None or (
+                    isinstance(raw_difference, str)
+                    and raw_difference.strip() in {"", "-", "–", "—"}
+                ):
+                    stats["skipped_unresolved_differences"] += 1
+                    continue
+                amount = round(safe_float(raw_difference), 2)
+                if is_reactive:
+                    if amount == 0:
+                        stats["skipped_zero_reactive_differences"] += 1
+                        continue
+                elif abs(amount) <= 10:
+                    stats["skipped_small_differences"] += 1
+                    continue
+                if meter_id is None:
+                    stats["skipped_missing_meter_id"] += 1
+                    continue
+                exported_rows.append((meter_id, item_id, fee_type, amount))
+
+        if transfer_sheet.max_row > 1:
+            transfer_sheet.delete_rows(2, transfer_sheet.max_row - 1)
+        for output_row, (meter_id, item_id, fee_type, amount) in enumerate(exported_rows, start=2):
+            for column, value in zip(
+                transfer_columns,
+                (meter_id, item_id, fee_type, None, None, amount, None, None),
+            ):
+                cell = transfer_sheet.cell(output_row, column, value)
+                cell._style = copy(style_prototype[column])
+            if prototype_height is not None:
+                transfer_sheet.row_dimensions[output_row].height = prototype_height
+        stats["exported_rows"] = len(exported_rows)
+        transfer_sheet.freeze_panes = "A2"
+        transfer_sheet.auto_filter.ref = f"A1:H{max(1, len(exported_rows) + 1)}"
+        transfer_sheet.sheet_view.showGridLines = False
+        for worksheet in list(template_workbook.worksheets):
+            if worksheet is not transfer_sheet:
+                template_workbook.remove(worksheet)
+
+        result_buffer = io.BytesIO()
+        template_workbook.save(result_buffer)
+        return result_buffer.getvalue(), stats
+    finally:
+        source_workbook.close()
+        cached_workbook.close()
+        if template_workbook is not None:
+            template_workbook.close()
+
+
 def total_distribution_amount(records: Iterable[dict[str, Any]]) -> float:
     return sum(safe_float(record.get("Dağıtım Bedeli(TL)", 0)) for record in records)
 
@@ -3983,6 +4618,19 @@ def run_analysis_pipeline(
         logs = [
             "Da\u011f\u0131t\u0131m faturas\u0131 dosyalar\u0131 olmadan yaln\u0131zca Bizim Kesti\u011fimiz Faturalar i\u015flendi."
         ]
+        service_filter_sources = [
+            source for source in invoice_sources
+            if source.get("region_invoice_service_filter_applied")
+        ]
+        if service_filter_sources:
+            excluded_count = sum(
+                int(source.get("region_invoice_service_filter_excluded_row_count", 0))
+                for source in service_filter_sources
+            )
+            logs.append(
+                "Hizmet D\u00f6ng\u00fcs\u00fc ve Hizmet Rotas\u0131 yaln\u0131zca T4_BOLGEDISI olanlar i\u015flendi; "
+                f"{format_turkish_integer(excluded_count)} di\u011fer kaynak sat\u0131r\u0131 Bizim Kesti\u011fimiz 2 sayfas\u0131na al\u0131nmad\u0131."
+            )
         if region_source_rows:
             logs.append(
                 f"ETSO bazl\u0131 {format_turkish_integer(region_etso_count)} kay\u0131t haz\u0131rland\u0131; "
@@ -4022,7 +4670,7 @@ def run_analysis_pipeline(
             return_stats=True,
         )
         normalized_records = normalize_extracted_regions(extracted_records)
-        # ENO zenginleştirme: Sayaç ID → EIC ETSO dönüşümü ve boş Müşteri doldurma
+        # ENO zenginleştirme: EIC dönüşümü, Sayaç ID aktarımı ve boş Müşteri doldurma
         eno_stats = enrich_from_eno_file(
             normalized_records,
             root_folder,
@@ -4062,6 +4710,7 @@ def run_analysis_pipeline(
             f"Sayaç/EIC eşleşmesi: {format_turkish_integer(eno_stats.get('eno_meter_lookup_count', 0))} | "
             f"EIC/müşteri eşleşmesi: {format_turkish_integer(eno_stats.get('eno_customer_lookup_count', 0))} | "
             f"ETSO dönüşümü: {format_turkish_integer(eno_stats.get('etso_converted', 0))} | "
+            f"Sayaç ID yazımı: {format_turkish_integer(eno_stats.get('eno_meter_id_filled', 0))} | "
             f"Müşteri doldurma: {format_turkish_integer(eno_stats.get('musteri_filled', 0))}."
         )
     else:
@@ -4085,6 +4734,19 @@ def run_analysis_pipeline(
             f"{format_turkish_integer(stats.get('invoice_sheet_count', 0))} kaynak sayfa, "
             f"{format_turkish_integer(calculated_amount_count)} olması gereken dağıtım bedeli hesaplandı."
         )
+        service_filter_sources = [
+            source for source in invoice_sources
+            if source.get("region_invoice_service_filter_applied")
+        ]
+        if service_filter_sources:
+            excluded_count = sum(
+                int(source.get("region_invoice_service_filter_excluded_row_count", 0))
+                for source in service_filter_sources
+            )
+            logs.append(
+                "Hizmet D\u00f6ng\u00fcs\u00fc ve Hizmet Rotas\u0131 yaln\u0131zca T4_BOLGEDISI olanlar i\u015flendi; "
+                f"{format_turkish_integer(excluded_count)} di\u011fer kaynak sat\u0131r\u0131 Bizim Kesti\u011fimiz 2 sayfas\u0131na al\u0131nmad\u0131."
+            )
         if comparison_sheet_count:
             logs.append(
                 f"{format_turkish_integer(comparison_sheet_count)} adet Bizim Kestiğimiz 2 karşılaştırma sayfası oluşturuldu."
@@ -4147,13 +4809,185 @@ def run_analysis_pipeline(
 
 
 
+def add_our_invoice_summary_columns(report_workbook: Any, comparison_sheet_name: str) -> bool:
+    """Append company totals sourced from the own-invoice columns on Karşılaştırma."""
+    from openpyxl.formatting.rule import CellIsRule
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    if "Özet" not in report_workbook.sheetnames or comparison_sheet_name not in report_workbook.sheetnames:
+        return False
+
+    summary_sheet = report_workbook["Özet"]
+    comparison_sheet = report_workbook[comparison_sheet_name]
+    comparison_headers = {
+        _normalize_tariff_lookup_key(cell.value): cell.column
+        for cell in comparison_sheet[1]
+        if cell.value is not None
+    }
+    company_column = comparison_headers.get(_normalize_tariff_lookup_key("Dağıtım Şirketi"))
+    if company_column is None:
+        return False
+
+    own_source_headers = [
+        "Dağıtım Bedeli (TL)",
+        "Güç Bedeli (TL)",
+        "Güç Aşım Bedeli (TL)",
+        "Reaktif Bedel (TL)",
+    ]
+    own_source_columns = [
+        comparison_headers.get(_normalize_tariff_lookup_key(header))
+        for header in own_source_headers
+    ]
+    if any(column is None for column in own_source_columns):
+        return False
+
+    metric_headers = [
+        "Dağıtım Bedeli (TL)",
+        "Güç Bedeli (TL)",
+        "Güç Aşım Bedeli (TL)",
+        "Reaktif Bedel (TL)",
+        "KDV Matrahı (TL)",
+        "KDV (TL)",
+        "Toplam (TL)",
+    ]
+    summary_last_row = summary_sheet.max_row
+    distribution_formulas = {
+        row_index: [
+            summary_sheet.cell(row_index, column).value
+            for column in range(2, 2 + len(metric_headers))
+        ]
+        for row_index in range(2, summary_last_row + 1)
+    }
+    if summary_sheet.max_column > 1:
+        summary_sheet.delete_cols(2, summary_sheet.max_column - 1)
+
+    for metric_index, metric_header in enumerate(metric_headers):
+        distribution_column = 2 + metric_index * 3
+        summary_sheet.cell(1, distribution_column, f"{metric_header} | Dağıtım")
+        summary_sheet.cell(1, distribution_column + 1, f"{metric_header} | Bizim Kestiğimiz")
+        summary_sheet.cell(1, distribution_column + 2, f"{metric_header} | Fark")
+
+    comparison_sheet_ref = "'" + comparison_sheet.title.replace("'", "''") + "'"
+    last_comparison_row = max(comparison_sheet.max_row, 2)
+    company_letter = get_column_letter(company_column)
+    company_range = (
+        f"{comparison_sheet_ref}!${company_letter}$2:${company_letter}${last_comparison_row}"
+    )
+    own_metric_ranges = [
+        f"{comparison_sheet_ref}!${get_column_letter(column)}$2:${get_column_letter(column)}${last_comparison_row}"
+        for column in own_source_columns
+    ]
+    number_format = '#,##0.00;[Red]-#,##0.00;"-"'
+    for row_index in range(2, summary_last_row + 1):
+        distribution_values = distribution_formulas[row_index]
+        for metric_index, distribution_value in enumerate(distribution_values):
+            distribution_column = 2 + metric_index * 3
+            summary_sheet.cell(
+                row_index,
+                distribution_column,
+                distribution_value,
+            )
+
+        for metric_index, metric_range in enumerate(own_metric_ranges):
+            own_column = 3 + metric_index * 3
+            summary_sheet.cell(
+                row_index,
+                own_column,
+                f"=SUMIF({company_range},$A{row_index},{metric_range})",
+            )
+
+        # KDV matrahı, KDV ve toplam aynı karşılaştırma kalemlerinden hesaplanır.
+        vat_base_column = 15
+        vat_column = 18
+        total_column = 21
+        fee_references = "+".join(
+            f"{get_column_letter(column)}{row_index}"
+            for column in (3, 6, 9, 12)
+        )
+        summary_sheet.cell(row_index, vat_base_column, f"={fee_references}")
+        summary_sheet.cell(row_index, vat_column, f"={get_column_letter(vat_base_column)}{row_index}*0.2")
+        summary_sheet.cell(
+            row_index,
+            total_column,
+            f"={fee_references}+{get_column_letter(vat_column)}{row_index}",
+        )
+        # Rebuild the distribution total against the paired layout's distribution columns.
+        summary_sheet.cell(
+            row_index,
+            20,
+            f"=B{row_index}+E{row_index}+H{row_index}+K{row_index}+Q{row_index}",
+        )
+
+        for metric_index in range(len(metric_headers)):
+            distribution_column = 2 + metric_index * 3
+            own_column = distribution_column + 1
+            difference_column = distribution_column + 2
+            summary_sheet.cell(
+                row_index,
+                difference_column,
+                f"={get_column_letter(distribution_column)}{row_index}-"
+                f"{get_column_letter(own_column)}{row_index}",
+            )
+        for column in range(2, 23):
+            cell = summary_sheet.cell(row_index, column)
+            cell.number_format = number_format
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    header_font = Font(bold=True, color="FFFFFF", size=10)
+    own_header_fill = PatternFill(fill_type="solid", fgColor="C65911")
+    difference_header_fill = PatternFill(fill_type="solid", fgColor="BF9000")
+    body_border = Border(bottom=Side(style="thin", color="D9E1F2"))
+    alternate_fill = PatternFill(fill_type="solid", fgColor="F3F6FA")
+    difference_fill = PatternFill(fill_type="solid", fgColor="FCE4D6")
+    difference_font = Font(color="9C0006")
+    distribution_header_fill = PatternFill(fill_type="solid", fgColor="305496")
+    for column in range(1, 23):
+        cell = summary_sheet.cell(1, column)
+        cell.font = header_font
+        if column == 1 or column % 3 == 2:
+            cell.fill = distribution_header_fill
+        elif column % 3 == 0:
+            cell.fill = own_header_fill
+        else:
+            cell.fill = difference_header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for row_index in range(2, summary_sheet.max_row + 1):
+        summary_sheet.row_dimensions[row_index].height = 22
+        for column in range(1, 23):
+            cell = summary_sheet.cell(row_index, column)
+            cell.border = body_border
+            if row_index % 2 == 0:
+                cell.fill = alternate_fill
+
+    summary_sheet.freeze_panes = "B2"
+    summary_sheet.auto_filter.ref = f"A1:V{summary_sheet.max_row}"
+    summary_sheet.sheet_view.showGridLines = False
+    summary_sheet.sheet_view.zoomScale = 85
+    summary_sheet.row_dimensions[1].height = 54
+    summary_sheet.column_dimensions["A"].width = 30
+    for column in range(2, 23):
+        summary_sheet.column_dimensions[get_column_letter(column)].width = 24
+    for column in range(2, 23):
+        if column % 3 == 1 and summary_sheet.max_row >= 2:
+            summary_sheet.conditional_formatting.add(
+                f"{get_column_letter(column)}2:{get_column_letter(column)}{summary_sheet.max_row}",
+                CellIsRule(
+                    operator="notEqual",
+                    formula=["0"],
+                    fill=difference_fill,
+                    font=difference_font,
+                ),
+            )
+    return True
+
+
 def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) -> bytes:
     """Rename the detail sheet and append formula-driven company totals."""
     from openpyxl import load_workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     summary_fields = [
-        ("Aktif Enerji Tüketim (kWh)", "Aktif Enerji Tüketim (kWh)"),
         ("Dağıtım Bedeli (TL)", "Dağıtım Bedeli (TL)"),
         ("Güç Bedeli (TL)", "Güç Bedeli (TL)"),
         ("Güç Aşım Bedeli (TL)", "Güç Aşım Bedeli (TL)"),
@@ -4191,6 +5025,8 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
     summary_sheet.append(headers)
     header_font = Font(bold=True, color="FFFFFF", size=11)
     header_fill = PatternFill(fill_type="solid", fgColor="305496")
+    body_border = Border(bottom=Side(style="thin", color="D9E1F2"))
+    alternate_fill = PatternFill(fill_type="solid", fgColor="F3F6FA")
     for cell in summary_sheet[1]:
         cell.font = header_font
         cell.fill = header_fill
@@ -4206,30 +5042,43 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
             f'=IF(OR(TRIM({company_source_cell})="",LOWER(TRIM({company_source_cell}))="nan"),"Bilinmeyen dağıtım şirketi",{company_source_cell})',
         )
         summary_sheet.cell(row_index, 1).alignment = Alignment(vertical="center")
+        summary_sheet.row_dimensions[row_index].height = 22
         for column_index, (_, source_field) in enumerate(summary_fields, start=2):
-            # Reaktif toplamı yalnızca Dağıtımın Kestiği sayfasındaki M sütunundan alınır.
-            source_column = 13 if source_field == "Reaktif Bedel (TL)" else source_columns[source_field]
+            source_column = source_columns[source_field]
             source_letter = detail_sheet.cell(1, source_column).column_letter
             sum_range = f"{detail_name}!${source_letter}$2:${source_letter}${last_detail_row}"
             sum_formula = f"SUMIF({company_range},$A{row_index},{sum_range})"
             cell = summary_sheet.cell(row_index, column_index)
             if source_field == "Toplam (TL)":
-                cell.value = f"=C{row_index}+D{row_index}+E{row_index}+F{row_index}+H{row_index}"
+                cell.value = f"=B{row_index}+C{row_index}+D{row_index}+E{row_index}+G{row_index}"
             elif is_unknown_company:
                 cell.value = f'=SUMIF({company_range},"",{sum_range})+SUMIF({company_range},"nan",{sum_range})'
             else:
                 cell.value = f"={sum_formula}"
             cell.number_format = number_format
             cell.alignment = Alignment(horizontal="right", vertical="center")
+        for cell in summary_sheet[row_index]:
+            cell.border = body_border
+            if row_index % 2 == 0:
+                cell.fill = alternate_fill
 
-    summary_sheet.freeze_panes = "A2"
-    summary_sheet.auto_filter.ref = f"A1:I{summary_sheet.max_row}"
-    summary_sheet.row_dimensions[1].height = 32
+    summary_sheet.freeze_panes = "B2"
+    summary_sheet.auto_filter.ref = f"A1:H{summary_sheet.max_row}"
+    summary_sheet.sheet_view.showGridLines = False
+    summary_sheet.sheet_view.zoomScale = 85
+    summary_sheet.row_dimensions[1].height = 42
     for column_cells in summary_sheet.columns:
         column_letter = column_cells[0].column_letter
-        max_length = max((len(str(cell.value or "")) for cell in column_cells), default=0)
-        summary_sheet.column_dimensions[column_letter].width = min(max(max_length + 2, 16), 42)
+        max_length = max(
+            (len(str(cell.value or "")) for cell in column_cells if cell.data_type != "f"),
+            default=0,
+        )
+        summary_sheet.column_dimensions[column_letter].width = min(max(max_length + 2, 16), 30)
+    summary_sheet.column_dimensions["A"].width = 30
+    for column_index in range(2, 9):
+        summary_sheet.column_dimensions[summary_sheet.cell(1, column_index).column_letter].width = 19
 
+    beautify_output_worksheets(workbook)
     workbook.calculation.fullCalcOnLoad = True
     workbook.calculation.forceFullCalc = True
     workbook.calculation.calcMode = "auto"
@@ -4414,6 +5263,7 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         help="Sayaç ID → EIC ve müşteri eşleştirmesi için Excel dosyasını seçin.",
     )
     st.sidebar.caption("Kesin Liste seçilmezse yüklenen dağıtım klasöründe otomatik aranır.")
+    st.sidebar.caption("Seçim yalnızca bu oturumda tutulur; sonraki çalıştırmada tekrar seçin.")
     return root_folder, invoice_file, selected_eno_file
 
 
@@ -4481,11 +5331,11 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             bool(selected_eno_file and os.path.isfile(selected_eno_file)),
         )
     st.sidebar.caption("Kesin Liste seçilmezse SKF klasörünün içinde otomatik aranır.")
+    st.sidebar.caption("Seçim yalnızca bu oturumda tutulur; sonraki çalıştırmada tekrar seçin.")
 
     if select_eno:
         new_eno_file = select_excel_file_via_dialog(
-            "Kesin Liste Excel dosyasını seçin",
-            initial_path=selected_eno_file,
+            "Kesin Liste Excel dosyasını seçin"
         )
         if new_eno_file:
             if Path(new_eno_file).suffix.casefold() not in {".xlsx", ".xlsm", ".xls"}:
@@ -4495,13 +5345,7 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
                 st.session_state["manual_selected_eno_file"] = new_eno_file
                 if new_eno_file != selected_eno_file:
                     clear_analysis_state()
-                save_error = save_eno_file_selection(new_eno_file)
-                if save_error:
-                    st.sidebar.warning(
-                        "Dosya bu oturum için seçildi ancak sonraki açılışlarda hatırlanamadı."
-                    )
-                else:
-                    st.rerun()
+                st.rerun()
         else:
             st.sidebar.info("Kesin Liste dosyası seçilmedi veya dosya penceresi açılamadı.")
 
@@ -4543,10 +5387,6 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
     st.session_state["selected_root_folder"] = root_folder
     st.session_state["selected_invoice_file"] = invoice_file
     st.session_state["selected_eno_file"] = selected_eno_file
-    if load_eno_file_selection() != selected_eno_file:
-        save_error = save_eno_file_selection(selected_eno_file)
-        if save_error:
-            st.sidebar.warning("Kesin Liste dosyası seçimi kalıcı olarak kaydedilemedi.")
     return root_folder, invoice_file, selected_eno_file
 
 
@@ -4705,7 +5545,7 @@ def render_reconciliation_consumption_file_picker() -> None:
         return
     selected_file = st.session_state.get("selected_reconciliation_consumption_file", "")
     button_column, status_column = st.sidebar.columns(
-        [6, 0.8],
+        [9, 1],
         gap="small",
         vertical_alignment="center",
     )
@@ -5025,6 +5865,7 @@ def render_analysis_panel(
     output_bytes = st.session_state.get("output_bytes")
     invoice_sources = st.session_state.get("invoice_sources", [])
     invoice_output_blocked = bool(stats.get("invoice_file_selected") and stats.get("invoice_file_errors"))
+    render_fee_difference_transfer_area(output_bytes, invoice_sources)
     render_reconciliation_difference_report_area(invoice_sources)
     if stats.get("invoice_only_mode"):
         for invoice_error in stats.get("invoice_file_errors", []):
@@ -5273,36 +6114,35 @@ def main() -> None:
     inject_corporate_css()
     initialize_session_state()
 
-    if uses_browser_file_inputs():
-        with st.container(border=True):
-            download_left, download_right = st.columns(
-                [3, 7], gap="large", vertical_alignment="center"
+    with st.container(border=True, key="local_package_download"):
+        download_title, download_details = st.columns([3, 7], gap="large", vertical_alignment="center")
+        with download_title:
+            st.markdown("### 💻 Windows uygulamasını indir")
+            st.link_button(
+                f"Yerel paketi indir · {APP_VERSION}",
+                LOCAL_PACKAGE_DOWNLOAD_URL,
+                type="primary",
+                width="stretch",
             )
-            with download_left:
-                st.markdown("### 💻 Windows uygulamasını indir")
-                st.link_button(
-                    "Yerel paketi indir · 1.2.1",
-                    LOCAL_PACKAGE_DOWNLOAD_URL,
-                    type="primary",
-                    width="stretch",
-                )
-            with download_right:
-                st.write(
-                    "Bölge dosyalarını bu bilgisayarda seçip birleştirmek için "
-                    "paketi indirin. Dosyalarınız yerelde işlenir; uygulama "
-                    "Python kurulumu gerektirmez."
-                )
-                st.caption(
-                    "ZIP'i çıkarın, `SKF'yi Başlat.bat` dosyasına çift tıklayın. "
-                    "Paket Windows 64-bit içindir."
-                )
-        st.divider()
+        with download_details:
+            st.markdown(
+                "Bölge dosyalarını bu bilgisayarda seçip birleştirmek için paketi indirin. "
+                "Dosyalarınız yerelde işlenir; uygulama Python kurulumu gerektirmez."
+            )
+            st.caption(
+                "ZIP'i çıkarın, `SKF'yi Başlat.bat` dosyasına çift tıklayın. "
+                "Paket Windows 64-bit içindir."
+            )
+    st.divider()
 
     root_folder, invoice_file, mapping_path, run_button = render_sidebar()
 
     header_left, header_right = st.columns([4, 2], gap="small", vertical_alignment="top")
     with header_left:
-        st.markdown('<div class="ck-title">⚡ CK Enerji EDAŞ Fatura Veri Portalı 1.2</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="ck-title">⚡ CK Enerji EDAŞ Fatura Veri Portalı {APP_VERSION}</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown(
             '<div class="ck-subtitle">21 dağıtım bölgesi için dinamik veri çıkarma, '
             'ETSO birleştirme ve kurumsal Excel raporu</div>',

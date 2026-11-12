@@ -3,7 +3,8 @@
 ENO (Enerji Piyasası Operatörü) dosyasından veri zenginleştirme modülü.
 
 Bu modül, çıktı kayıtlarındaki Sayaç ID'lerini ENO dosyasındaki eşleştirmeleri
-kullanarak EIC kodlarına dönüştürür ve eksik Müşteri/Abone bilgilerini doldurur.
+kullanarak EIC kodlarına dönüştürür, EIC kodlarına karşılık gelen Sayaç ID'leri
+çıktıya ekler ve eksik Müşteri/Abone bilgilerini doldurur.
 """
 
 import os
@@ -31,14 +32,16 @@ def _find_eno_file(base_path):
 
 
 def _load_eno_lookups(eno_path):
-    """ENO dosyasından iki lookup tablosu oluştur:
+    """ENO dosyasından ETSO, sayaç ID ve abone lookup tabloları oluştur:
     
     1. sayac_id_to_eic: Sayaç ID (E sütunu) → Sayaç EIC Kod (D sütunu)
-    2. eic_to_abone: Sayaç EIC Kod (D sütunu) → Abone Ad-Soyad/Unvan (AD sütunu)
+    2. eic_to_sayac_id: Sayaç EIC Kod (D sütunu) → Sayaç ID (E sütunu)
+    3. eic_to_abone: Sayaç EIC Kod (D sütunu) → Abone Ad-Soyad/Unvan (AD sütunu)
     
     Satır 1: üst başlık (merged), Satır 2: gerçek başlık, Satır 3+: veri
     """
     sayac_id_to_eic = {}  # str(Sayaç ID) → str(EIC Kod)
+    eic_to_sayac_id = {}  # normalized str(EIC Kod) → str(Sayaç ID)
     eic_to_abone = {}     # str(EIC Kod) → str(Abone Ad-Soyad)
     
     try:
@@ -76,12 +79,13 @@ def _load_eno_lookups(eno_path):
                         except (ValueError, TypeError):
                             pass
                     sayac_id_to_eic[e_str] = eic_str
+                    eic_to_sayac_id[eic_str.casefold()] = e_str
                 
                 # EIC Kod → Abone Ad-Soyad eşleştirmesi
                 if ad_val is not None:
                     ad_str = str(ad_val).strip()
                     if ad_str:
-                        eic_to_abone[eic_str] = ad_str
+                        eic_to_abone[eic_str.casefold()] = ad_str
         
         wb.close()
         print(f"  [ENO] {row_count} satır okundu: {len(sayac_id_to_eic)} Sayaç ID→EIC, {len(eic_to_abone)} EIC→Abone")
@@ -89,19 +93,26 @@ def _load_eno_lookups(eno_path):
     except Exception as e:
         print(f"  [ENO HATA] {eno_path}: {e}")
     
-    return sayac_id_to_eic, eic_to_abone
+    return sayac_id_to_eic, eic_to_sayac_id, eic_to_abone
 
 
 def enrich_from_eno_file(records, base_path):
     """Çıktı kayıtlarını ENO dosyasından zenginleştir:
     
     1. ETSO Kodu '40Z' ile başlamıyorsa → ENO'daki Sayaç ID eşleşmesiyle EIC Kod'a çevir
-    2. Müşteri alanı boşsa → EIC Kod ile ENO'dan Abone Ad-Soyad/Unvan getir
+    2. EIC koduyla ENO'dan Sayaç ID alanını kayda ekle
+    3. Müşteri alanı boşsa → EIC Kod ile ENO'dan Abone Ad-Soyad/Unvan getir
     
     Returns:
         dict: Zenginleştirme istatistikleri
     """
-    stats = {'eno_file': None, 'etso_converted': 0, 'musteri_filled': 0, 'total_records': len(records)}
+    stats = {
+        'eno_file': None,
+        'etso_converted': 0,
+        'eno_meter_id_filled': 0,
+        'musteri_filled': 0,
+        'total_records': len(records),
+    }
     
     eno_path = _find_eno_file(base_path)
     if not eno_path:
@@ -111,7 +122,7 @@ def enrich_from_eno_file(records, base_path):
     stats['eno_file'] = os.path.basename(eno_path)
     print(f"\n[ENO] Dosya bulundu: {stats['eno_file']}")
     
-    sayac_id_to_eic, eic_to_abone = _load_eno_lookups(eno_path)
+    sayac_id_to_eic, eic_to_sayac_id, eic_to_abone = _load_eno_lookups(eno_path)
     
     if not sayac_id_to_eic and not eic_to_abone:
         print("[ENO] Lookup tabloları boş, zenginleştirme yapılamadı")
@@ -153,9 +164,19 @@ def enrich_from_eno_file(records, base_path):
             continue
         etso_str = str(etso).strip()
         
-        if etso_str in eic_to_abone:
-            record['Müşteri'] = eic_to_abone[etso_str]
+        eic_key = etso_str.casefold()
+        if eic_key in eic_to_abone:
+            record['Müşteri'] = eic_to_abone[eic_key]
             stats['musteri_filled'] += 1
+
+    for record in records:
+        eic_key = str(record.get('Etso Kodu') or '').strip().casefold()
+        meter_id = eic_to_sayac_id.get(eic_key)
+        if meter_id is not None:
+            record['Sayaç ID'] = meter_id
+            stats['eno_meter_id_filled'] += 1
+        else:
+            record.setdefault('Sayaç ID', '')
     
     print(f"  [ENO] ETSO dönüştürülen: {stats['etso_converted']}, Müşteri doldurulan: {stats['musteri_filled']}")
     return stats

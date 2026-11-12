@@ -35,7 +35,8 @@ Güvenilir yerel ağda paylaşmak için `python run_app.py --lan` kullanılabili
 `--lan-open` XSRF korumasını kapattığından yalnızca geliştirme/test içindir.
 
 Uygulama ekranında 21 EDAŞ bölge klasörünün bulunduğu ana dizini seçin. Sonuç
-Excel dosyasını arayüzdeki indirme düğmesiyle alın.
+Excel dosyasını arayüzdeki indirme düğmesiyle alın. Ana ekrandaki Windows paket
+indirme kartı hem yerel hem tarayıcı modunda görünür.
 
 ## Web ve LAN üzerinden dosya seçimi
 
@@ -47,7 +48,10 @@ ve 2.000 dosya sınırları uygulanır. `.xlsx`, `.xls`, `.xml` ve `.html` dosya
 Bizim Kestiğimiz Faturalar, Uzlaştırma Tüketim, Kesin Liste ve Sistem Kullanım
 Bedelleri için ayrı Excel yükleme alanları vardır. Bizim Kestiğimiz Faturalar,
 dağıtım yüklenmeden tek başına işlenebilir. Uzlaştırma dosyası her analizden sonra
-yeniden seçilir. Kaynak değişince önceki analiz sonucu temizlenir.
+yeniden seçilir. Kesin Liste seçimi yalnızca açık uygulama oturumunda tutulur;
+uygulama yeniden açıldığında yeniden seçilmelidir. Windows dosya penceresi önceki
+Kesin Liste seçimini başlangıç yolu olarak kullanmaz. Kaynak değişince önceki analiz
+sonucu temizlenir.
 
 Yüklemeler her tarayıcı oturumu için ayrı geçici çalışma alanında sunucuda işlenir;
 kalıcı dosya arşivi oluşturulmaz. Sonuçları indirme düğmeleriyle alın.

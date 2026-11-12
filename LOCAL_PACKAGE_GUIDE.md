@@ -6,6 +6,7 @@ Windows paketi kullanıcı hesabı altında çalışır; Python veya Excel kurul
 istemez. Kullanıcı ZIP'i yerel klasörüne çıkarıp `SKF'yi Başlat.bat` dosyasına
 çift tıklar. Uygulama varsayılan tarayıcıyı yerel adrese açar ve dosyaları
 Windows'un kendi seçme pencereleriyle alır. Analiz aynı bilgisayarda yürür.
+Kesin Liste seçimi oturum içinde tutulur; uygulama yeniden açıldığında tekrar seçilir.
 
 ## Paket üretme
 
@@ -27,8 +28,9 @@ Windows'un kendi seçme pencereleriyle alır. Analiz aynı bilgisayarda yürür.
    kanalına verin. SHA-256 değeri aynı klasördeki `.sha256` dosyasındadır.
 
 Paketleyici yalnızca uygulamanın kaynak kodunu, `SKF Başlıkları.xlsx` dosyasını,
-varsayılan Sistem Kullanım Bedelleri kitabını, gerekli Python bağımlılıklarını ve
-Python çalışma zamanını alır. Bölge faturaları, ENO/sayaç listeleri, yerel dosya
+ek kalem bedel aktarım şablonunu, varsayılan Sistem Kullanım Bedelleri kitabını,
+gerekli Python bağımlılıklarını ve Python çalışma zamanını alır. Bölge faturaları,
+ENO/sayaç listeleri, yerel dosya
 yolu tercihleri, çıktı dosyaları, proje testleri ve arşivlenmiş analiz kodları
 pakete girmez.
 

@@ -3,22 +3,50 @@
 # PROJE DOKUMANTASYONU
 
 > [!IMPORTANT]
-> **Google Antigravity ve sonraki geliştiriciler için en güncel kaynak:** Önce
-> Bölüm **50 - Google Antigravity İçin Nihai Devir**, ardından Bölüm **51 -
-> Final Bütünlük Kontrolü** ve `extract_and_compare.py` dosyasının en üstündeki
-> **Üretim Teknik Sözleşmesi** okunmalıdır. Bölüm 1-42 tarihsel süreç kaydıdır;
-> eski yol, eski mimari, eski hash ve “çözülemeyen sorun” ifadeleri güncel
-> gerçeklik olarak yorumlanmamalıdır.
+> **Güncel proje kaynağı:** Bu belgenin başındaki **Güncel Proje Durumu — 10 Kasım
+> 2026** özeti ile `extract_and_compare.py` dosyasının başındaki **Üretim Teknik
+> Sözleşmesi** güncel uygulamayı açıklar. Eski tarihli bölümler geliştirme geçmişidir;
+> içlerindeki eski yol, mimari, hash ve plan ifadeleri güncel durum olarak
+> yorumlanmamalıdır.
+
+## Güncel Proje Durumu — 10 Kasım 2026
+
+- **Sürüm ve giriş noktaları:** Uygulama sürümü `1.2.1`; başlatıcı `run_app.py`,
+  arayüz ve analiz akışı `06-Haziran/app.py`, fatura işleme ve Excel üretimi
+  `06-Haziran/extract_and_compare.py` içindedir.
+- **Fatura işleme:** 21 EDAŞ bölgesinden `.xlsx`, `.xls`, `.xml` ve `.html`
+  kaynakları işlenir. Fatura Yönetimi ve Bölge İcmal biçimleri başlık içeriklerinden
+  tanınır; bölge eşlemeleri `SKF Başlıkları.xlsx` üzerinden uygulanır.
+- **Raporlar:** Fatura ve dağıtım verileri ETSO üzerinden karşılaştırılır. Kesin
+  Liste/ENO ve Sistem Kullanım Bedelleri kaynakları seçilebilir; Uzlaştırma Tüketim
+  dosyası isteğe bağlıdır. Dağıtım çıktısında Sayaç ID, ETSO Kodu'nun önündedir.
+- **Çalıştırma:** Yerel Windows akışına ek olarak `run_app.py --lan` güvenilir yerel
+  ağda XSRF korumalı kullanım sağlar. Hosted/tarayıcı akışında dağıtım klasör yapısı
+  tek ZIP olarak yüklenir.
+- **Karşılaştırma görünümü:** Bizim kestiğimiz sütunlar `F2E6D9`, dağıtım sütunları
+  `FCE4D6` dolgusu kullanır; fark sütunları ve uyuşmayan hücre vurguları korunur.
+
+Bu özet güncel uygulama durumunu verir; aşağıdaki tarihli sprint maddeleri tarihsel
+kayıt niteliğindedir.
 
 ## Projenin Amacı ve Bağlamı
 
-Bu proje, Türkiye'nin 21 farklı electricity distribution bölgesinden (EDAS) gelen fatura verilerini çıkarma ve karşılaştırma amacıyla geliştirilmiştir. Proje, SKF (Sosyal Kaynaklar ve Fonları) tarafından sağlanan referans dosyaları ile karşılaştırılarak, veri eksikliklerini ve tutarsızlıkları tespit etmeyi amaçlar.
+SKF Fatura Veri Portalı, Türkiye'deki 21 EDAŞ bölgesinden gelen fatura çalışma
+kitaplarını okuyup ortak alanlara dönüştürür. Bölge eşleme kurallarıyla verileri
+normalize eder; fatura kayıtlarını dağıtım kayıtlarıyla ve seçildiğinde Uzlaştırma
+Tüketim verisiyle karşılaştırır. Sonuçlar indirilebilir Excel çalışma kitapları
+olarak sunulur.
 
-### Ana Hedefler:
-1. Farklı formatlarda (XLS, XLSX, XML, HTML) gelen fatura dosyalarını okuma
-2. Her dağıtım bölgesi için özel header mapping kullanarak veri çıkarımı
-3. Referans dosya ile karşılaştırma ve eksik/fazla kayıtları tespit etme
-4. Tutarlı bir çıkış dosyası oluşturma
+### Ana hedefler
+
+1. `.xlsx`, `.xls`, `.xml` ve `.html` kaynaklarını işlemek.
+2. Fatura Yönetimi ve Bölge İcmal girişlerini başlık içeriklerine göre tanımak.
+3. `SKF Başlıkları.xlsx` bölge eşlemelerini uygulamak ve seçilen ENO/Kesin Liste
+   dosyasından sayaç bilgileriyle çıktıyı zenginleştirmek.
+4. Fatura ve dağıtım kayıtlarını ETSO üzerinden karşılaştırmak; isteğe bağlı
+   Uzlaştırma Tüketim verisinden fark raporları üretmek.
+5. Uygulamayı yerel Windows, güvenilir LAN veya tarayıcı yükleme akışında
+   çalıştırmak.
 
 ---
 
@@ -5176,12 +5204,16 @@ dosyasından okunuyor. Kod değişikliği gerektirmeden mapping güncellenebilir
 - XSRF koruması `--lan` modunda otomatik aktif
 - KVKK uyumluluğu: ETSO verileri dış ağlardan erişilemez
 
-### Git Commit Geçmişi
-| Commit | Tarih | Açıklama |
-|---|---|---|
-| `68102f2` | 22 Eyl | Sprint 0: Ölü kod, pinning, 50MB limit |
-| `db007dc` | 22 Eyl | DOCS: 4 mühendislik dokümanı |
-| `3479995` | 22 Eyl | Notlar 12 implementasyonu |
-| `daa01a7` | 24 Eyl | Mimari Sprint: 7 modül, 55 test, facade pattern |
-| `9ed03f1` | 24 Eyl | DRY: Reaktif 4→1, 61 test |
-| *son*    | 24 Eyl | Madde 7-10: JSON config, Notlar şablonu, git branch, LAN güvenliği |
+### Güncel Proje Özeti — 10 Kasım 2026
+
+Bu kayıt, bu bölümdeki 24 Eylül sprint maddelerinden sonraki güncel durumu özetler:
+
+- Uygulama `1.2.1` sürümündedir; `run_app.py` başlatıcı, `06-Haziran/app.py`
+  arayüz ve analiz akışı, `extract_and_compare.py` fatura işleme ve Excel üretimidir.
+- Bölge faturaları başlıklarına göre okunur ve `SKF Başlıkları.xlsx` eşlemeleriyle
+  standartlaştırılır. Fatura/dağıtım karşılaştırması ETSO koduna göre yapılır.
+- İsteğe bağlı ENO/Kesin Liste, Sistem Kullanım Bedelleri ve Uzlaştırma Tüketim
+  kaynakları kullanılabilir; dağıtım çıktısında Sayaç ID, ETSO Kodu'nun önündedir.
+- Yerel Windows, XSRF korumalı LAN ve hosted/tarayıcı ZIP yükleme akışları desteklenir.
+- Karşılaştırma sayfasında bizim kestiğimiz sütunlar `F2E6D9`, dağıtım sütunları
+  `FCE4D6` dolgusu kullanır. Fark ve uyuşmayan hücre vurguları korunur.
