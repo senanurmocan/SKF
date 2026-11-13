@@ -27,7 +27,10 @@ APP_SOURCE = ROOT / "06-Haziran"
 REQUIREMENTS = APP_SOURCE / "requirements.txt"
 PACKAGE_VERSION = "1.3"
 PACKAGE_NAME = f"SKF-Yerel-Paket-{PACKAGE_VERSION}"
-OUTPUT_DIR = ROOT / "dist"
+_configured_output = Path(os.environ.get("SKF_PACKAGE_OUTPUT_DIR", "dist"))
+OUTPUT_DIR = (
+    _configured_output if _configured_output.is_absolute() else ROOT / _configured_output
+).resolve()
 PACKAGE_ZIP = OUTPUT_DIR / f"{PACKAGE_NAME}.zip"
 PACKAGE_CHECKSUM = OUTPUT_DIR / f"{PACKAGE_NAME}.sha256"
 
@@ -78,6 +81,7 @@ def check_build_environment() -> Path:
     base = Path(sys.base_prefix)
     required_runtime_paths = (
         base / "python.exe",
+        base / "pythonw.exe",
         base / "Lib",
         base / "DLLs",
         base / f"python{sys.version_info.major}{sys.version_info.minor}.dll",
@@ -129,7 +133,7 @@ def copy_runtime(destination: Path, site_packages: Path) -> None:
     shutil.copytree(base / "Lib", runtime / "Lib", ignore=ignore_base_site_packages)
     shutil.copytree(base / "DLLs", runtime / "DLLs")
 
-    runtime_files = [base / "python.exe", base / "python3.dll"]
+    runtime_files = [base / "python.exe", base / "pythonw.exe", base / "python3.dll"]
     runtime_files.extend(base.glob("python*.dll"))
     runtime_files.extend(base.glob("vcruntime140*.dll"))
     runtime_files.extend(base.glob("python*.zip"))
@@ -160,7 +164,10 @@ Başlatma
 1. Bu ZIP'i kullanıcı profilinizde yazma izni olan bir klasöre çıkarın.
    Önerilen konum: %LOCALAPPDATA%\\SKF-Yerel
 2. Klasördeki `SKF'yi Başlat.bat` dosyasına çift tıklayın.
-3. Portal tarayıcıda açılır. Durdurmak için açılan siyah pencereyi kapatın.
+3. Kısa süre görünen siyah pencere kapanır ve portal tarayıcıda açılır.
+   Pencerenin kapanması uygulamayı durdurmaz; uygulama arka planda çalışır.
+4. Uygulamayı kapatmak için `SKF'yi Durdur.bat` dosyasına çift tıklayın.
+5. Sorun giderme için `SKF'yi Tanılama Modunda Başlat.bat` dosyasını kullanın.
 
 Kullanım ve veri akışı
 - Uygulama yalnızca bu bilgisayarda, 127.0.0.1 adresinde çalışır.
@@ -188,6 +195,7 @@ Teknik bilgiler
 - Python veya pip kurulumu, yönetici izni ya da internet bağlantısı gerekmez.
 - Uygulama yerel web arayüzü için yalnızca loopback portu açar; LAN erişimi
   etkinleştirilmez.
+- Günlük dosyaları `%LOCALAPPDATA%\\SKF-Yerel\\logs` klasörüne kaydedilir.
 """
     (destination / "README-Yerel-Kullanim.txt").write_text(readme, encoding="utf-8")
 
@@ -195,28 +203,77 @@ Teknik bilgiler
 def write_launcher(destination: Path) -> None:
     launcher = rf"""@echo off
 setlocal
-title SKF Local App v{PACKAGE_VERSION}
 cd /d "%~dp0"
-set "SKF_PACKAGE_ROOT=%~dp0"
-if not exist "%~dp0runtime\python.exe" (
-  echo Portable Python runtime not found. Extract the ZIP again.
+if not exist "%~dp0runtime\pythonw.exe" (
+  echo Python arka plan calisma zamani bulunamadi. ZIP dosyasini yeniden cikarin.
   pause
   exit /b 1
 )
-set "SKF_FILE_INPUT_MODE=native"
-set "STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
-"%SKF_PACKAGE_ROOT%runtime\python.exe" "%SKF_PACKAGE_ROOT%06-Haziran\run.py"
-set "SKF_EXIT_CODE=%ERRORLEVEL%"
-if not "%SKF_EXIT_CODE%"=="0" (
-  echo App closed with error code: %SKF_EXIT_CODE%
+if not exist "%~dp0SKF-Baslat.vbs" (
+  echo Baslatma dosyasi bulunamadi. ZIP dosyasini yeniden cikarin.
   pause
+  exit /b 1
 )
-exit /b %SKF_EXIT_CODE%
+wscript.exe //NoLogo "%~dp0SKF-Baslat.vbs"
+exit /b 0
 """
     (destination / "SKF'yi Başlat.bat").write_text(
         launcher,
         encoding="ascii",
         newline="\r\n",
+    )
+
+    start_script = (
+        'Set shell = CreateObject("WScript.Shell")\n'
+        'root = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)\n'
+        'pythonw = root & "\\runtime\\pythonw.exe"\n'
+        'launcher = root & "\\06-Haziran\\run.py"\n'
+        'shell.CurrentDirectory = root & "\\06-Haziran"\n'
+        'shell.Environment("PROCESS").Item("SKF_FILE_INPUT_MODE") = "native"\n'
+        'shell.Environment("PROCESS").Item("STREAMLIT_BROWSER_GATHER_USAGE_STATS") = "false"\n'
+        'shell.Run Chr(34) & pythonw & Chr(34) & " " & Chr(34) & launcher & Chr(34) & " --background", 0, False\n'
+    )
+    (destination / "SKF-Baslat.vbs").write_text(
+        start_script, encoding="utf-8", newline="\r\n"
+    )
+
+    stop_script = (
+        'Set shell = CreateObject("WScript.Shell")\n'
+        'root = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)\n'
+        'pythonw = root & "\\runtime\\pythonw.exe"\n'
+        'launcher = root & "\\06-Haziran\\run.py"\n'
+        'shell.CurrentDirectory = root & "\\06-Haziran"\n'
+        'shell.Environment("PROCESS").Item("SKF_FILE_INPUT_MODE") = "native"\n'
+        'shell.Run Chr(34) & pythonw & Chr(34) & " " & Chr(34) & launcher & Chr(34) & " --stop", 0, True\n'
+    )
+    (destination / "SKF-Durdur.vbs").write_text(
+        stop_script, encoding="utf-8", newline="\r\n"
+    )
+
+    stop_launcher = r"""@echo off
+cd /d "%~dp0"
+if not exist "%~dp0runtime\pythonw.exe" (
+  echo Python calisma zamani bulunamadi. ZIP dosyasini yeniden cikarin.
+  pause
+  exit /b 1
+)
+wscript.exe //NoLogo "%~dp0SKF-Durdur.vbs"
+"""
+    (destination / "SKF'yi Durdur.bat").write_text(
+        stop_launcher, encoding="ascii", newline="\r\n"
+    )
+
+    diagnostic_launcher = rf"""@echo off
+setlocal
+title SKF Tanilama Modu v{PACKAGE_VERSION}
+cd /d "%~dp0"
+set "SKF_FILE_INPUT_MODE=native"
+set "STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
+"%~dp0runtime\python.exe" "%~dp0\06-Haziran\run.py"
+pause
+"""
+    (destination / "SKF'yi Tanılama Modunda Başlat.bat").write_text(
+        diagnostic_launcher, encoding="ascii", newline="\r\n"
     )
 
 
