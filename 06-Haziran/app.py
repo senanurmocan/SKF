@@ -5253,17 +5253,17 @@ def render_browser_excel_picker(
 ) -> str:
     generation = st.session_state.get(f"_upload_generation_{category}", 0)
     widget_key = f"browser_upload_{category}_{generation}"
-    with container.container(key=f"browser_upload_shell_{category}") as upload_shell:
-        uploaded = upload_shell.file_uploader(
-            label,
-            type=["xlsx", "xlsm", "xls"],
-            key=widget_key,
-            help=help,
-            max_upload_size=200,
-            on_change=synchronize_browser_excel_upload,
-            args=(widget_key, category, selected_key),
-            label_visibility="collapsed",
-        )
+    upload_shell = container.container(key=f"browser_upload_shell_{category}")
+    uploaded = upload_shell.file_uploader(
+        label,
+        type=["xlsx", "xlsm", "xls"],
+        key=widget_key,
+        help=help,
+        max_upload_size=200,
+        on_change=synchronize_browser_excel_upload,
+        args=(widget_key, category, selected_key),
+        label_visibility="collapsed",
+    )
     path = synchronize_browser_upload(
         [uploaded] if uploaded is not None else [],
         category=category,
@@ -5275,15 +5275,15 @@ def render_browser_excel_picker(
 
 
 def render_browser_sidebar_inputs() -> tuple[str, str, str]:
-    with st.sidebar.container(key="browser_upload_shell_distribution") as upload_shell:
-        uploaded_zip = upload_shell.file_uploader(
-            "📁 Dağıtım Şirketi SKF",
-            type=["zip"],
-            key="browser_upload_distribution_zip",
-            max_upload_size=200,
-            help="Bölge klasörlerinin yapısını tek bir ZIP dosyasında koruyarak yükleyin.",
-            label_visibility="collapsed",
-        )
+    upload_shell = st.sidebar.container(key="browser_upload_shell_distribution")
+    uploaded_zip = upload_shell.file_uploader(
+        "📁 Dağıtım Şirketi SKF",
+        type=["zip"],
+        key="browser_upload_distribution_zip",
+        max_upload_size=200,
+        help="Bölge klasörlerinin yapısını tek bir ZIP dosyasında koruyarak yükleyin.",
+        label_visibility="collapsed",
+    )
     uploaded_files = [uploaded_zip] if uploaded_zip is not None else []
     kind = "zip"
     root_folder = synchronize_browser_upload(
