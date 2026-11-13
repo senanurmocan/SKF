@@ -554,6 +554,55 @@ def inject_corporate_css() -> None:
             opacity: .58;
             transform: none;
         }
+        [data-testid="stSidebar"] [data-testid="stFileUploader"] {
+            margin: 0;
+        }
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+            box-sizing: border-box;
+            min-height: 2.55rem;
+            padding: .1rem .4rem;
+            background: var(--ck-surface);
+            border: 1px solid var(--ck-border);
+            border-radius: 11px;
+        }
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] > * {
+            visibility: hidden;
+        }
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+            box-sizing: border-box;
+            width: 100%;
+            min-height: 2.25rem;
+            padding: .3rem .45rem;
+            background: transparent;
+            border: 0;
+            color: transparent;
+            font-size: 0;
+            visibility: visible;
+        }
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button::after {
+            color: var(--ck-text);
+            font-size: .88rem;
+            font-weight: 550;
+            line-height: 1.25;
+            visibility: visible;
+        }
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
+            background: var(--ck-hover);
+            border: 0;
+            color: transparent;
+        }
+        .st-key-browser_upload_shell_distribution [data-testid="stFileUploaderDropzone"] button::after {
+            content: "📁 Dağıtım Şirketi SKF";
+        }
+        .st-key-browser_upload_shell_invoice [data-testid="stFileUploaderDropzone"] button::after {
+            content: "📄 Bizim Kestiğimiz Faturalar";
+        }
+        .st-key-browser_upload_shell_reconciliation [data-testid="stFileUploaderDropzone"] button::after {
+            content: "⚖️ Uzlaştırma Tüketim";
+        }
+        .st-key-browser_upload_shell_eno [data-testid="stFileUploaderDropzone"] button::after {
+            content: "📄 Kesin Liste (isteğe bağlı)";
+        }
         [data-testid="stSidebar"] [data-testid="stAlert"] {
             padding: .55rem .7rem;
             border-radius: 11px;
@@ -5204,15 +5253,17 @@ def render_browser_excel_picker(
 ) -> str:
     generation = st.session_state.get(f"_upload_generation_{category}", 0)
     widget_key = f"browser_upload_{category}_{generation}"
-    uploaded = container.file_uploader(
-        label,
-        type=["xlsx", "xlsm", "xls"],
-        key=widget_key,
-        help=help,
-        max_upload_size=200,
-        on_change=synchronize_browser_excel_upload,
-        args=(widget_key, category, selected_key),
-    )
+    with container.container(key=f"browser_upload_shell_{category}") as upload_shell:
+        uploaded = upload_shell.file_uploader(
+            label,
+            type=["xlsx", "xlsm", "xls"],
+            key=widget_key,
+            help=help,
+            max_upload_size=200,
+            on_change=synchronize_browser_excel_upload,
+            args=(widget_key, category, selected_key),
+            label_visibility="collapsed",
+        )
     path = synchronize_browser_upload(
         [uploaded] if uploaded is not None else [],
         category=category,
@@ -5224,14 +5275,15 @@ def render_browser_excel_picker(
 
 
 def render_browser_sidebar_inputs() -> tuple[str, str, str]:
-    st.sidebar.markdown("**📁 Dağıtım Şirketi SKF**")
-    uploaded_zip = st.sidebar.file_uploader(
-        "Dağıtım klasörünü ZIP olarak seçin",
-        type=["zip"],
-        key="browser_upload_distribution_zip",
-        max_upload_size=200,
-        help="Bölge klasörlerinin yapısını tek bir ZIP dosyasında koruyarak yükleyin.",
-    )
+    with st.sidebar.container(key="browser_upload_shell_distribution") as upload_shell:
+        uploaded_zip = upload_shell.file_uploader(
+            "📁 Dağıtım Şirketi SKF",
+            type=["zip"],
+            key="browser_upload_distribution_zip",
+            max_upload_size=200,
+            help="Bölge klasörlerinin yapısını tek bir ZIP dosyasında koruyarak yükleyin.",
+            label_visibility="collapsed",
+        )
     uploaded_files = [uploaded_zip] if uploaded_zip is not None else []
     kind = "zip"
     root_folder = synchronize_browser_upload(
@@ -5393,7 +5445,7 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
 def render_sidebar() -> tuple[str, str, str | None, bool]:
     logo_path = BASE_DIR / "CK_Enerji_-_Yatay.png"
     if logo_path.exists():
-        st.sidebar.image(str(logo_path), width="stretch")
+        st.sidebar.image(logo_path.read_bytes(), width="stretch")
     st.sidebar.subheader("📁 Veri Kaynağı")
     if uses_browser_file_inputs():
         root_folder, invoice_file, selected_eno_file = render_browser_sidebar_inputs()
