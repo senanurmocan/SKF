@@ -4,15 +4,11 @@
 
 Windows paketi kullanıcı hesabı altında çalışır; Python veya Excel kurulumu
 istemez. Kullanıcı ZIP'i yerel klasörüne çıkarıp `SKF'yi Başlat.bat` dosyasına
-çift tıklar. Başlatıcı penceresi kapanır; uygulama arka planda çalışmaya devam
-eder ve varsayılan tarayıcı yerel adresi açar. Dosyalar Windows'un kendi seçme
-pencereleriyle alınır. Analiz aynı bilgisayarda yürür.
+çift tıklar. Siyah komut penceresi uygulama açık olduğu sürece açık kalır.
+Pencereyi kapatınca uygulama da durur. Uygulama varsayılan tarayıcıyı yerel
+adrese açar ve dosyaları Windows'un kendi seçme pencereleriyle alır. Analiz aynı
+bilgisayarda yürür.
 Kesin Liste seçimi oturum içinde tutulur; uygulama yeniden açıldığında tekrar seçilir.
-
-Uygulamayı kapatmak için `SKF'yi Durdur.bat` dosyasına çift tıklayın. Tarayıcıyı
-kapatmak uygulama sürecini durdurmaz. Başlatma sorunlarında günlük dosyası
-`%LOCALAPPDATA%\SKF-Yerel\logs` altına yazılır; ayrıntıları görmek için
-`SKF'yi Tanılama Modunda Başlat.bat` kullanılabilir.
 
 ## Paket üretme
 
@@ -24,8 +20,8 @@ kapatmak uygulama sürecini durdurmaz. Başlatma sorunlarında günlük dosyası
    .\.venv\Scripts\python.exe -m pip install -r 06-Haziran\requirements.txt
    ```
 
-3. Depo kökünde paketleyiciyi çalıştırın (mevcut `dist` çıktısını koruyarak ayrı
-   bir klasöre üretmek için):
+3. Depo kökünde paketleyiciyi çalıştırın. Mevcut `dist` çıktısını koruyup
+   ayrı klasöre üretmek için:
 
    ```powershell
    $env:SKF_PACKAGE_OUTPUT_DIR = "dist\guncelleme"
