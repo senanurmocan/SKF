@@ -6164,7 +6164,14 @@ def render_analysis_panel(
 def main() -> None:
     inject_copy_shortcut_guard()
     inject_corporate_css()
-    initialize_session_state()
+    download_only_web = os.name != "nt"
+    if download_only_web:
+        workspace = st.session_state.get("_upload_workspace")
+        if workspace is not None:
+            workspace.close()
+        st.session_state.clear()
+    else:
+        initialize_session_state()
 
     with st.container(border=True, key="local_package_download"):
         download_title, download_details = st.columns([3, 7], gap="large", vertical_alignment="center")
@@ -6186,6 +6193,13 @@ def main() -> None:
                 "Paket Windows 64-bit içindir."
             )
     st.divider()
+
+    if download_only_web:
+        st.info(
+            "Gizlilik için web sürümünde dosya yükleme ve analiz kapalıdır. "
+            "Uygulamayı indirip Windows bilgisayarınızda çalıştırabilirsiniz."
+        )
+        return
 
     root_folder, invoice_file, mapping_path, run_button = render_sidebar()
 
