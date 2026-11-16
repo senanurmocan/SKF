@@ -1892,6 +1892,7 @@ def filter_extracted_data(data, region_name=None):
         'tarife', 'tarifegrubu', 'faturatamamlanmatarihi',
         'agog', 'terim', 'terimtipi',
     }
+    CATEGORY_FIELDS = ('Tarife Grubu', 'AG OG', 'TERİM')
 
     for row in data:
         bedel = row.get('Dağıtım Bedeli(TL)', 0)
@@ -1902,14 +1903,13 @@ def filter_extracted_data(data, region_name=None):
         # Skip sub-header rows where etso or customer contains literally header titles
         etso_str = normalize_header(etso)
         cust_str = normalize_header(customer)
-        category_header_values = {
-            normalize_header(row.get(field))
-            for field in ('Tarife Grubu', 'AG OG', 'TERİM')
-        }
         if (
             etso_str in HEADER_ETSO_VALUES
             or cust_str in HEADER_CUSTOMER_VALUES
-            or category_header_values.intersection(HEADER_CATEGORY_VALUES)
+            or any(
+                normalize_header(row.get(field)) in HEADER_CATEGORY_VALUES
+                for field in CATEGORY_FIELDS
+            )
         ):
             continue
 
