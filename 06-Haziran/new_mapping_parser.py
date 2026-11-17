@@ -128,7 +128,7 @@ def parse_mapping_file(file_path):
         'notes': {
             'reaktif_toplam': 'Z sütunundan itibaren dolu sütunların toplamı',
             'eksi_veriler': 'Getirilmeli',
-            'aktif_enerji_toplam': 'P + R (Boğaziçi, Sakarya, Uludağ, Yeşilırmak)',
+            'aktif_enerji_toplam': 'P + R (Boğaziçi, Uludağ, Yeşilırmak)',
             'duplicate_handling': 'Max for sözleşme/güç, sum for others',
             'akdeniz_parentheses': 'Eksi değerler parantez içi',
             'akedas_tl_raporu': 'TL_Raporu dosyaları alınmalı',
@@ -467,7 +467,7 @@ def apply_note_rules(mapping, region_name):
     Kurallar:
     1. Reaktif bedel: Z sütunundan itibaren dolu sütunların toplamı
     2. Eksi veriler: Getirilmeli (negative values allowed)
-    3. Aktif enerji toplam: P + R (Boğaziçi, Sakarya, Uludağ, Yeşilırmak)
+    3. Aktif enerji toplam: P + R (Boğaziçi, Uludağ, Yeşilırmak)
     4. Duplicate handling: Max for sözleşme/güç, sum for others
     5. Akdeniz: Eksi değerler parantez içi
     6. AKEDAŞ: TL_Raporu dosyaları
@@ -493,7 +493,7 @@ def apply_note_rules(mapping, region_name):
     rules['apply_negative_filter'] = False
     
     # Rule #3: Aktif enerji toplam (P + R)
-    active_energy_regions = ['Boğaziçi EDAŞ', 'Sakarya EDAŞ', 'Uludağ EDAŞ', 'Yeşilırmak EDAŞ']
+    active_energy_regions = ['Boğaziçi EDAŞ', 'Uludağ EDAŞ', 'Yeşilırmak EDAŞ']
     if region_name in active_energy_regions:
         rules['active_energy_rule'] = 'P + R sum'
     

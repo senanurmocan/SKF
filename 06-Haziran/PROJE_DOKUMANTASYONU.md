@@ -241,8 +241,8 @@ Bu bölüm, Haziran ayı fatura verileri %100 kusursuz eşleşme noktasına geti
 - **Header Eşleştirme**: `new_mapping_parser.py` içinde jenerik başlık yerine Satır 16'daki `Baglanti Gucu` başlığı Sütun Q (Index 16) ile doğrudan eşleştirilerek Tek Terimli hesapların sıfırlanması engellendi.
 
 #### 3. Sakarya EDAŞ
-- **İlk Reaktif ("X" Değerleri)**: Sütun AQ (`Reaktif Affı`) içindeki `'X'` değerleri doğrudan **`İlk Reaktif`** sütununa aktarıldı. `'X'` ibaresi gelen satırlarda `Reaktif Bedel (TL)` sayısal olarak (`0.0`) korundu.
-- **Trafo Kaybı**: Sütun BG (`Trafo Kaybı Tüketim`) verisi `Aktif Enerji Tüketim (kWh)` değerine eklenerek toplandı.
+- **Aktif Enerji**: `Aktif Enerji Tüketim (kWh)` yalnızca `Başlıklar` sayfasındaki `Dağıtım Miktarı` alanından (kaynak sütun AR) alınır. Trafo kaybı veya başka bir sütun eklenmez.
+- **İlk Reaktif ("X" Değerleri)**: Sütun AQ (`Reaktif Affı`) içindeki `'X'` değerleri doğrudan **`İlk Reaktif`** sütununa aktarılır. `'X'` ibaresi gelen satırlarda `Reaktif Bedel (TL)` sayısal olarak (`0.0`) korunur.
 - **Mapping Override**: `SPECIAL_HEADER_MAPPING`'den `'reaktif_tenzil': None` engeli kaldırıldı.
 
 #### 4. Trakya EDAŞ
