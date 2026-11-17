@@ -3,11 +3,11 @@
 ## Kullanıcı deneyimi
 
 Windows paketi kullanıcı hesabı altında çalışır; Python veya Excel kurulumu
-istemez. Kullanıcı ZIP'i yerel klasörüne çıkarıp `SKF'yi Başlat.bat` dosyasına
-çift tıklar. Siyah komut penceresi uygulama açık olduğu sürece açık kalır.
-Pencereyi kapatınca uygulama da durur. Uygulama varsayılan tarayıcıyı yerel
-adrese açar ve dosyaları Windows'un kendi seçme pencereleriyle alır. Analiz aynı
-bilgisayarda yürür.
+istemez. Kullanıcı ZIP'i yerel klasörüne çıkarıp `SKF'yi Başlat.vbs` dosyasına
+çift tıklar. Uygulama siyah komut penceresi açmadan varsayılan tarayıcıda başlar.
+Durdurmak için `SKF'yi Kapat.vbs` dosyası kullanılır. Uygulama e-posta hesabı
+veya kullanıcı girişi istemez. Dosyalar Windows'un kendi seçme pencereleriyle
+alınır ve analiz aynı bilgisayarda yürür.
 Kesin Liste seçimi oturum içinde tutulur; uygulama yeniden açıldığında tekrar seçilir.
 
 ## Paket üretme

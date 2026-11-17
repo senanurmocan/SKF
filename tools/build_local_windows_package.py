@@ -162,8 +162,9 @@ def write_package_readme(destination: Path) -> None:
 Başlatma
 1. Bu ZIP'i kullanıcı profilinizde yazma izni olan bir klasöre çıkarın.
    Önerilen konum: %LOCALAPPDATA%\\SKF-Yerel
-2. Klasördeki `SKF'yi Başlat.bat` dosyasına çift tıklayın.
-3. Portal tarayıcıda açılır. Durdurmak için açılan siyah pencereyi kapatın.
+2. Klasördeki `SKF'yi Başlat.vbs` dosyasına çift tıklayın.
+3. Portal siyah komut penceresi göstermeden varsayılan tarayıcıda açılır.
+4. Durdurmak için `SKF'yi Kapat.vbs` dosyasına çift tıklayın.
 
 Kullanım ve veri akışı
 - Uygulama yalnızca bu bilgisayarda, 127.0.0.1 adresinde çalışır.
@@ -171,6 +172,7 @@ Kullanım ve veri akışı
   kaynaklar bu bilgisayardaki Windows dosya seçicileriyle seçilir.
 - Kaynak dosyalar Streamlit Cloud'a veya başka bir sunucuya yüklenmez.
 - Analiz ve Excel çıktısı bu bilgisayarda hazırlanır.
+- Uygulama e-posta hesabı veya kullanıcı girişi istemez.
 - Streamlit kullanım istatistikleri kapalıdır.
 - Kullanıcı dosyaları, seçilmiş dosya yolları ve rapor çıktıları bu ZIP'e dahil
   edilmez. Sistem Kullanım Bedelleri tercihi config altında saklanır; Kesin Liste
@@ -192,32 +194,54 @@ Teknik bilgiler
 - Uygulama yerel web arayüzü için yalnızca loopback portu açar; LAN erişimi
   etkinleştirilmez.
 """
-    (destination / "README-Yerel-Kullanim.txt").write_text(readme, encoding="utf-8")
+    (destination / "README-Yerel-Kullanim.txt").write_text(
+        readme.replace("\r\n", "\n"),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def write_launcher(destination: Path) -> None:
-    launcher = rf"""@echo off
-setlocal
-title SKF Local App v{PACKAGE_VERSION}
-cd /d "%~dp0"
-set "SKF_PACKAGE_ROOT=%~dp0"
-if not exist "%~dp0runtime\python.exe" (
-  echo Portable Python runtime not found. Extract the ZIP again.
-  pause
-  exit /b 1
-)
-set "SKF_FILE_INPUT_MODE=native"
-set "STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
-"%SKF_PACKAGE_ROOT%runtime\python.exe" "%SKF_PACKAGE_ROOT%06-Haziran\run.py"
-set "SKF_EXIT_CODE=%ERRORLEVEL%"
-if not "%SKF_EXIT_CODE%"=="0" (
-  echo App closed with error code: %SKF_EXIT_CODE%
-  pause
-)
-exit /b %SKF_EXIT_CODE%
+    start_launcher = r"""Option Explicit
+Dim shell, fso, packageRoot, pythonExe, runScript, commandLine
+Set shell = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+packageRoot = fso.GetParentFolderName(WScript.ScriptFullName)
+pythonExe = fso.BuildPath(packageRoot, "runtime\python.exe")
+runScript = fso.BuildPath(packageRoot, "06-Haziran\run.py")
+If Not fso.FileExists(pythonExe) Or Not fso.FileExists(runScript) Then
+  MsgBox "Uygulama dosyalari eksik. ZIP paketini yeniden cikarin.", vbExclamation, "SKF"
+  WScript.Quit 1
+End If
+shell.Environment("Process")("SKF_FILE_INPUT_MODE") = "native"
+shell.Environment("Process")("STREAMLIT_BROWSER_GATHER_USAGE_STATS") = "false"
+commandLine = Chr(34) & pythonExe & Chr(34) & " " & Chr(34) & runScript & Chr(34)
+shell.Run commandLine, 0, False
 """
-    (destination / "SKF'yi Başlat.bat").write_text(
-        launcher,
+    stop_launcher = r"""Option Explicit
+Dim shell, fso, packageRoot, runScript, wmi, process, found
+Set shell = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+packageRoot = fso.GetParentFolderName(WScript.ScriptFullName)
+runScript = fso.BuildPath(packageRoot, "06-Haziran\run.py")
+Set wmi = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
+found = False
+For Each process In wmi.ExecQuery("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='python.exe'")
+  If Not IsNull(process.CommandLine) Then
+    If InStr(1, process.CommandLine, runScript, vbTextCompare) > 0 Then
+      shell.Run "taskkill.exe /PID " & process.ProcessId & " /T /F", 0, True
+      found = True
+    End If
+  End If
+Next
+"""
+    (destination / "SKF'yi Başlat.vbs").write_text(
+        start_launcher.replace("\r\n", "\n"),
+        encoding="ascii",
+        newline="\r\n",
+    )
+    (destination / "SKF'yi Kapat.vbs").write_text(
+        stop_launcher.replace("\r\n", "\n"),
         encoding="ascii",
         newline="\r\n",
     )
@@ -239,7 +263,7 @@ def main() -> int:
     )
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    staging_root = ROOT / ".local-package-build"
+    staging_root = OUTPUT_DIR / ".staging"
     staging_root.mkdir(exist_ok=True)
     staging_parent = staging_root.resolve()
     staging = Path(tempfile.mkdtemp(prefix="build-", dir=staging_root)).resolve()
