@@ -1095,6 +1095,13 @@ def initialize_session_state() -> None:
         "fee_difference_transfer_signature": None,
         "fee_difference_transfer_stats": {},
         "fee_difference_transfer_error": None,
+        "invoice_report_workbook_signature": None,
+        "invoice_report_workbook_bytes": None,
+        "invoice_report_workbook_sources": [],
+        "invoice_report_workbook_errors": [],
+        "consumption_report_signature": None,
+        "consumption_report_bytes": None,
+        "consumption_report_error": None,
         "processing_logs": [],
         "analysis_signature": None,
         "distribution_only_mode": False,
@@ -1159,6 +1166,13 @@ def clear_analysis_state() -> None:
     st.session_state["fee_difference_transfer_signature"] = None
     st.session_state["fee_difference_transfer_stats"] = {}
     st.session_state["fee_difference_transfer_error"] = None
+    st.session_state["invoice_report_workbook_signature"] = None
+    st.session_state["invoice_report_workbook_bytes"] = None
+    st.session_state["invoice_report_workbook_sources"] = []
+    st.session_state["invoice_report_workbook_errors"] = []
+    st.session_state["consumption_report_signature"] = None
+    st.session_state["consumption_report_bytes"] = None
+    st.session_state["consumption_report_error"] = None
     st.session_state["processing_logs"] = []
     st.session_state["analysis_signature"] = None
 
@@ -2189,22 +2203,15 @@ def append_selected_invoice_file(
                 read_only=True,
                 keep_vba=extension == ".xlsm",
             )
-            source_values_workbook = load_workbook(
-                file_path,
-                data_only=True,
-                read_only=True,
-                keep_vba=extension == ".xlsm",
-            )
             source_sheets = [
                 (
                     sheet.title,
                     sheet.iter_rows(values_only=False),
-                    source_values_workbook[sheet.title],
                     detect_our_invoice_worksheet_format(sheet),
                 )
                 for sheet in source_workbook.worksheets
             ]
-            source_sheets = [sheet for sheet in source_sheets if sheet[3] is not None]
+            source_sheets = [sheet for sheet in source_sheets if sheet[2] is not None]
             if not source_sheets:
                 source_sheet_name = (
                     source_workbook.worksheets[0].title
@@ -2216,7 +2223,6 @@ def append_selected_invoice_file(
             for sheet_number, (
                 source_sheet_name,
                 source_rows,
-                source_values_worksheet,
                 invoice_format,
             ) in enumerate(source_sheets, start=1):
                 is_region_summary = invoice_format == "region_summary"
@@ -2230,11 +2236,14 @@ def append_selected_invoice_file(
                     suffix += 1
                 target_sheet = report_workbook.create_sheet(unique_title)
                 style_cache: dict[int, Any] = {}
+                sheet_has_formulas = False
 
                 for row in source_rows:
                     for source_cell in row:
                         if source_cell.value is None:
                             continue
+                        if source_cell.data_type == "f":
+                            sheet_has_formulas = True
                         target_cell = target_sheet.cell(
                             source_cell.row,
                             source_cell.column,
@@ -2254,6 +2263,17 @@ def append_selected_invoice_file(
                                 style_cache[style_id] = copy(target_cell._style)
                             else:
                                 target_cell._style = cached_style
+                if sheet_has_formulas and not is_region_summary:
+                    if source_values_workbook is None:
+                        source_values_workbook = load_workbook(
+                            file_path,
+                            data_only=True,
+                            read_only=True,
+                            keep_vba=extension == ".xlsm",
+                        )
+                    source_values_worksheet = source_values_workbook[source_sheet_name]
+                else:
+                    source_values_worksheet = None
                 if is_region_summary:
                     calculation_stats = {
                         "calculated_distribution_amount_count": 0,
@@ -3459,6 +3479,117 @@ def _optional_identifier_text(value: Any) -> str | None:
     return text if text and text.casefold() not in {"nan", "none", "-"} else None
 
 
+def load_invoice_tariff_by_etso(file_path: str | None) -> dict[str, str]:
+    """Read the tariff group directly from the selected own-invoice workbook."""
+    if not file_path:
+        return {}
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"Fatura dosyas\u0131 bulunamad\u0131: {file_path}")
+
+    extension = Path(file_path).suffix.casefold()
+    tariff_by_etso: dict[str, str] = {}
+    found_headers = False
+
+    def header_columns(values: Any) -> dict[str, int]:
+        return {
+            _normalize_tariff_lookup_key(value): index
+            for index, value in enumerate(values, start=1)
+            if value is not None
+        }
+
+    def add_row(etso_value: Any, tariff_value: Any) -> None:
+        code = reconciliation_etso_key(etso_value)
+        tariff = _optional_identifier_text(tariff_value)
+        if code and tariff:
+            tariff_by_etso.setdefault(code, tariff)
+
+    if extension in {".xlsx", ".xlsm"}:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(
+            file_path,
+            read_only=True,
+            data_only=True,
+            keep_vba=extension == ".xlsm",
+        )
+        try:
+            for worksheet in workbook.worksheets:
+                header_row_index = None
+                columns: dict[str, int] = {}
+                for row_index, row in enumerate(
+                    worksheet.iter_rows(max_row=min(worksheet.max_row or 1, 20), values_only=True),
+                    start=1,
+                ):
+                    candidate_columns = header_columns(row)
+                    etso_column = next(
+                        (candidate_columns[key] for key in ("etso", "etsokodu") if key in candidate_columns),
+                        None,
+                    )
+                    tariff_column = candidate_columns.get(_normalize_tariff_lookup_key("Tarife Grubu"))
+                    if etso_column is not None and tariff_column is not None:
+                        header_row_index = row_index
+                        columns = {"etso": etso_column, "tariff": tariff_column}
+                        found_headers = True
+                        break
+                if header_row_index is None:
+                    continue
+
+                first_column = min(columns.values())
+                last_column = max(columns.values())
+                etso_offset = columns["etso"] - first_column
+                tariff_offset = columns["tariff"] - first_column
+                for row in worksheet.iter_rows(
+                    min_row=header_row_index + 1,
+                    min_col=first_column,
+                    max_col=last_column,
+                    values_only=True,
+                ):
+                    add_row(
+                        row[etso_offset] if etso_offset < len(row) else None,
+                        row[tariff_offset] if tariff_offset < len(row) else None,
+                    )
+        finally:
+            workbook.close()
+    elif extension == ".xls":
+        import xlrd
+
+        workbook = xlrd.open_workbook(file_path, on_demand=True)
+        try:
+            for worksheet in workbook.sheets():
+                header_row_index = None
+                columns: dict[str, int] = {}
+                for row_index in range(min(worksheet.nrows, 20)):
+                    candidate_columns = header_columns(
+                        worksheet.cell_value(row_index, column_index)
+                        for column_index in range(worksheet.ncols)
+                    )
+                    etso_column = next(
+                        (candidate_columns[key] for key in ("etso", "etsokodu") if key in candidate_columns),
+                        None,
+                    )
+                    tariff_column = candidate_columns.get(_normalize_tariff_lookup_key("Tarife Grubu"))
+                    if etso_column is not None and tariff_column is not None:
+                        header_row_index = row_index
+                        columns = {"etso": etso_column - 1, "tariff": tariff_column - 1}
+                        found_headers = True
+                        break
+                if header_row_index is None:
+                    continue
+                for row_index in range(header_row_index + 1, worksheet.nrows):
+                    add_row(
+                        worksheet.cell_value(row_index, columns["etso"]),
+                        worksheet.cell_value(row_index, columns["tariff"]),
+                    )
+        finally:
+            workbook.release_resources()
+    else:
+        raise ValueError("Bizim Kesti\u011fimiz Faturalar dosyas\u0131 Excel bi\u00e7iminde olmal\u0131d\u0131r.")
+
+    if not found_headers:
+        raise ValueError("Fatura dosyas\u0131nda ETSO ve Tarife Grubu ba\u015fl\u0131klar\u0131 bulunamad\u0131.")
+    return tariff_by_etso
+
+
 def load_ges_comparison_source_maps(
     raw_df: pd.DataFrame,
     output_bytes: bytes | None,
@@ -3466,10 +3597,12 @@ def load_ges_comparison_source_maps(
     *,
     invoice_only_mode: bool,
     reconciliation_source_values: dict[str, float | None] | None = None,
+    invoice_tariff_by_etso: dict[str, str] | None = None,
 ) -> tuple[
     dict[str, float | None],
     dict[str, float | None],
     dict[str, float | None],
+    dict[str, str],
     dict[str, str],
     dict[str, str],
     dict[str, str],
@@ -3481,6 +3614,7 @@ def load_ges_comparison_source_maps(
     customer_by_etso: dict[str, str] = {}
     meter_id_by_etso: dict[str, str] = {}
     company_by_etso: dict[str, str] = {}
+    tariff_group_by_etso: dict[str, str] = {}
 
     source_reconciliation = reconciliation_source_values
     if source_reconciliation is None:
@@ -3514,6 +3648,9 @@ def load_ges_comparison_source_maps(
         text = _optional_identifier_text(value)
         if code and text:
             target.setdefault(code, text)
+
+    for code_value, tariff_value in (invoice_tariff_by_etso or {}).items():
+        add_text_value(tariff_group_by_etso, code_value, tariff_value)
 
     if raw_df is not None and not raw_df.empty:
         raw_headers = {
@@ -3583,6 +3720,7 @@ def load_ges_comparison_source_maps(
                 company_column = find_column(headers, "Dağıtım Şirketi", "Dağıtım Bölgesi")
                 meter_column = find_column(headers, "Sayaç ID", "Sayac ID")
                 customer_column = find_column(headers, "Müşteri", "Müşteri Adı", "Ünvan", "Ad Soyad")
+                tariff_column = find_column(headers, "Tarife Grubu") if is_invoice else None
                 energy_column = find_column(headers, "Aktif Enerji Tüketim (kWh)") if is_invoice else None
                 reconciliation_column = (
                     find_column(headers, "Uzlaştırma Tüketim (kWh)", "Uzlaştırma Tüketimi (kWh)")
@@ -3591,7 +3729,7 @@ def load_ges_comparison_source_maps(
                 needed_columns = [
                     column for column in (
                         etso_column, company_column, meter_column, customer_column,
-                        energy_column, reconciliation_column,
+                        tariff_column, energy_column, reconciliation_column,
                     ) if column is not None
                 ]
                 if len(needed_columns) == 1:
@@ -3608,6 +3746,8 @@ def load_ges_comparison_source_maps(
                         add_text_value(meter_id_by_etso, code, row[meter_column - 1] if len(row) >= meter_column else None)
                     if customer_column is not None:
                         add_text_value(customer_by_etso, code, row[customer_column - 1] if len(row) >= customer_column else None)
+                    if tariff_column is not None:
+                        add_text_value(tariff_group_by_etso, code, row[tariff_column - 1] if len(row) >= tariff_column else None)
                     if energy_column is not None:
                         _add_optional_consumption_aggregate(
                             invoice_by_etso,
@@ -3636,6 +3776,7 @@ def load_ges_comparison_source_maps(
         customer_by_etso,
         meter_id_by_etso,
         company_by_etso,
+        tariff_group_by_etso,
     )
 
 
@@ -3659,6 +3800,104 @@ def load_cached_ges_production_by_etso(file_path: str) -> dict[str, float | None
         "values": values,
     }
     return values.copy()
+
+
+def _report_file_signature(file_path: str | None) -> tuple[str, int | None, int | None]:
+    if not file_path:
+        return "", None, None
+    normalized_path = os.path.normcase(os.path.abspath(file_path))
+    try:
+        stat = os.stat(file_path)
+    except OSError:
+        return normalized_path, None, None
+    return normalized_path, stat.st_size, stat.st_mtime_ns
+
+
+def invoice_report_input_signature(
+    invoice_file: str | None,
+    mapping_path: str | None,
+    system_usage_file: str | None,
+    reconciliation_consumption_file: str | None,
+) -> tuple[Any, ...]:
+    return (
+        st.session_state.get("analysis_signature"),
+        _report_file_signature(invoice_file),
+        _report_file_signature(mapping_path),
+        _report_file_signature(system_usage_file),
+        _report_file_signature(reconciliation_consumption_file),
+    )
+
+
+def prepare_invoice_report_workbook(
+    output_bytes: bytes | None,
+    *,
+    invoice_file: str | None,
+    mapping_path: str | None,
+    system_usage_file: str | None,
+    reconciliation_consumption_file: str | None,
+    invoice_only_mode: bool,
+    existing_invoice_sources: list[dict[str, Any]],
+) -> tuple[bytes | None, list[dict[str, Any]], list[str], tuple[Any, ...]]:
+    """Reuse the SKF invoice comparison sheets for an on-demand report."""
+    signature = invoice_report_input_signature(
+        invoice_file,
+        mapping_path,
+        system_usage_file,
+        reconciliation_consumption_file,
+    )
+    if invoice_only_mode:
+        return output_bytes, existing_invoice_sources, [], signature
+    if not output_bytes:
+        return None, [], ["Önce SKF tablosunu hazırlayın."], signature
+
+    if st.session_state.get("invoice_report_workbook_signature") == signature:
+        cached_bytes = st.session_state.get("invoice_report_workbook_bytes")
+        if isinstance(cached_bytes, bytes):
+            return (
+                cached_bytes,
+                st.session_state.get("invoice_report_workbook_sources", []),
+                st.session_state.get("invoice_report_workbook_errors", []),
+                signature,
+            )
+
+    if any(source.get("comparison_sheet_name") for source in existing_invoice_sources):
+        report_bytes = output_bytes
+        report_sources = existing_invoice_sources
+        errors: list[str] = []
+    else:
+        report_bytes, report_sources, errors, _ = append_selected_invoice_file(
+            output_bytes,
+            invoice_file or None,
+            mapping_path=mapping_path,
+            system_usage_file=system_usage_file or None,
+            reconciliation_consumption_file=reconciliation_consumption_file or None,
+        )
+    if reconciliation_consumption_file and not any(
+        isinstance(source.get("reconciliation_consumption_by_etso"), dict)
+        for source in report_sources
+    ):
+        try:
+            reconciliation_values, reconciliation_stats = load_reconciliation_consumption_by_etso(
+                reconciliation_consumption_file
+            )
+            if report_sources:
+                report_sources[0].update(reconciliation_stats)
+                report_sources[0]["reconciliation_consumption_by_etso"] = reconciliation_values
+            else:
+                report_sources = [
+                    {
+                        **reconciliation_stats,
+                        "reconciliation_consumption_by_etso": reconciliation_values,
+                    }
+                ]
+        except (OSError, ValueError, zipfile.BadZipFile, KeyError) as error:
+            errors.append(f"Uzlaştırma tüketim dosyası okunamadı: {error}")
+
+    st.session_state["invoice_report_workbook_signature"] = signature
+    st.session_state["invoice_report_workbook_bytes"] = report_bytes
+    st.session_state["invoice_report_workbook_sources"] = report_sources
+    st.session_state["invoice_report_workbook_errors"] = errors
+    return report_bytes, report_sources, errors, signature
 
 
 
@@ -3836,6 +4075,7 @@ def build_ges_consumption_difference_rows(
     customer_name_by_etso: dict[str, str] | None = None,
     meter_id_by_etso: dict[str, str] | None = None,
     company_by_etso: dict[str, str] | None = None,
+    tariff_group_by_etso: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return every ETSO and numeric source values for the comparison report."""
     rows: list[dict[str, Any]] = []
@@ -3844,20 +4084,25 @@ def build_ges_consumption_difference_rows(
         | set(invoice_consumption_by_etso)
         | set(distribution_consumption_by_etso)
         | set(reconciliation_consumption_by_etso)
+        | set(tariff_group_by_etso or {})
     )
     customer_name_by_etso = customer_name_by_etso or {}
     meter_id_by_etso = meter_id_by_etso or {}
     company_by_etso = company_by_etso or {}
+    tariff_group_by_etso = tariff_group_by_etso or {}
     for code in all_codes:
         production = production_by_etso.get(code)
+        distribution = distribution_consumption_by_etso.get(code)
         rows.append({
+            "Da\u011f\u0131t\u0131m \u015eirketi": company_by_etso.get(code),
+            "Saya\u00e7 ID": meter_id_by_etso.get(code),
             "ETSO": code,
             "M\u00fc\u015fteri Ad\u0131": customer_name_by_etso.get(code),
+            "Bizim Kesti\u011fimiz Tarife Grubu": tariff_group_by_etso.get(code),
             "Bizim Kesti\u011fimiz T\u00fcketim (kWh)": invoice_consumption_by_etso.get(code),
-            "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)": distribution_consumption_by_etso.get(code),
+            "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)": distribution,
+            "_Da\u011f\u0131t\u0131m T\u00fcketimi Eksik": distribution is None,
             "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)": reconciliation_consumption_by_etso.get(code),
-            "Saya\u00e7 ID": meter_id_by_etso.get(code),
-            "Da\u011f\u0131t\u0131m \u015eirketi": company_by_etso.get(code),
             "GES \u00dcretimi (kWh)": 0 if production is None else production,
         })
     return rows
@@ -3869,13 +4114,14 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
     from openpyxl.utils import get_column_letter
 
     headers = [
+        "Da\u011f\u0131t\u0131m \u015eirketi",
+        "Saya\u00e7 ID",
         "ETSO",
         "M\u00fc\u015fteri Ad\u0131",
+        "Bizim Kesti\u011fimiz Tarife Grubu",
         "Bizim Kesti\u011fimiz T\u00fcketim (kWh)",
         "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)",
         "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)",
-        "Saya\u00e7 ID",
-        "Da\u011f\u0131t\u0131m \u015eirketi",
         "GES \u00dcretimi (kWh)",
         "Da\u011f\u0131t\u0131m - Uzla\u015ft\u0131rma Fark\u0131 (kWh)",
     ]
@@ -3883,6 +4129,8 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
     reconciliation_header = "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)"
     header_fill = PatternFill(fill_type="solid", fgColor="305496")
     difference_range_fill = PatternFill(fill_type="solid", fgColor="FFF2CC")
+    missing_distribution_font = Font(color="C00000")
+    numeric_format = '#,##0.00;-#,##0.00;0.00'
 
     workbook = Workbook()
     workbook.calculation.fullCalcOnLoad = True
@@ -3899,12 +4147,22 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
 
     distribution_column = get_column_letter(headers.index(distribution_header) + 1)
     reconciliation_column = get_column_letter(headers.index(reconciliation_header) + 1)
+    distribution_column_index = headers.index(distribution_header) + 1
+    numeric_columns = {
+        headers.index("Bizim Kesti\u011fimiz T\u00fcketim (kWh)") + 1,
+        distribution_column_index,
+        headers.index(reconciliation_header) + 1,
+        headers.index("GES \u00dcretimi (kWh)") + 1,
+    }
     for row_index, row in enumerate(rows, start=2):
+        distribution_missing = bool(row.get("_Da\u011f\u0131t\u0131m T\u00fcketimi Eksik"))
+        distribution_value = row.get(distribution_header)
+        if distribution_missing:
+            distribution_value = 0
+        reconciliation_value = row.get(reconciliation_header)
         for column, header in enumerate(headers, start=1):
             cell = worksheet.cell(row_index, column)
             if column == len(headers):
-                distribution_value = row.get(distribution_header)
-                reconciliation_value = row.get(reconciliation_header)
                 cell.fill = PatternFill(fill_type=None)
                 if distribution_value is None or reconciliation_value is None:
                     cell.value = "-"
@@ -3913,22 +4171,24 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
                     difference = distribution_value - reconciliation_value
                     if -10 <= difference <= 10:
                         cell.fill = difference_range_fill
-                cell.number_format = '#,##0.00;[Red]-#,##0.00;0.00'
+                cell.number_format = numeric_format
                 cell.alignment = Alignment(vertical="center")
                 continue
 
             value = row.get(header)
-            if column == 8 and value is None:
+            if column == distribution_column_index and distribution_missing:
                 value = 0
             cell.value = value if value is not None else "-"
             cell.alignment = Alignment(vertical="center")
-            if column in {3, 4, 5, 8} and value is not None:
-                cell.number_format = '#,##0.00;[Red]-#,##0.00;0.00'
+            if column in numeric_columns and value is not None:
+                cell.number_format = numeric_format
+            if column == distribution_column_index and distribution_missing:
+                cell.font = missing_distribution_font
 
-    worksheet.freeze_panes = "C2"
+    worksheet.freeze_panes = "D2"
     worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(rows) + 1)}"
     worksheet.row_dimensions[1].height = 42
-    for column, width in enumerate([24, 38, 30, 34, 28, 20, 24, 24, 38], start=1):
+    for column, width in enumerate([26, 22, 24, 38, 28, 30, 34, 28, 24, 38], start=1):
         worksheet.column_dimensions[get_column_letter(column)].width = width
 
     legend_row = len(rows) + 3
@@ -3950,64 +4210,127 @@ def render_ges_consumption_difference_report_area(
     invoice_sources: list[dict[str, Any]],
     *,
     invoice_only_mode: bool,
+    invoice_file: str | None,
+    mapping_path: str | None,
+    system_usage_file: str | None,
+    reconciliation_consumption_file: str | None,
     reconciliation_consumption_by_etso: dict[str, float | None] | None = None,
 ) -> None:
+    if not output_bytes:
+        return
     file_path = str(st.session_state.get("selected_ges_production_file", "")).strip()
-    if not file_path:
-        return
-    if not os.path.isfile(file_path):
-        st.error("Se\u00e7ilen GES \u00fcretimi dosyas\u0131 bulunamad\u0131; dosyay\u0131 yeniden se\u00e7in.")
-        return
-
-    try:
-        production_by_etso = load_cached_ges_production_by_etso(file_path)
-        (
-            invoice_consumption_by_etso,
-            distribution_consumption_by_etso,
-            reconciliation_consumption_by_etso,
-            customer_name_by_etso,
-            meter_id_by_etso,
-            company_by_etso,
-        ) = load_ges_comparison_source_maps(
-            raw_df,
-            output_bytes,
-            invoice_sources,
-            invoice_only_mode=invoice_only_mode,
-            reconciliation_source_values=reconciliation_consumption_by_etso,
-        )
-    except (OSError, ValueError, zipfile.BadZipFile, KeyError) as error:
-        st.error(f"GES t\u00fcketim kar\u015f\u0131la\u015ft\u0131rma raporu olu\u015fturulamad\u0131: {error}")
-        return
-
-    rows = build_ges_consumption_difference_rows(
-        production_by_etso,
-        invoice_consumption_by_etso,
-        distribution_consumption_by_etso,
-        reconciliation_consumption_by_etso,
-        customer_name_by_etso,
-        meter_id_by_etso,
-        company_by_etso,
+    current_signature = (
+        *invoice_report_input_signature(
+            invoice_file,
+            mapping_path,
+            system_usage_file,
+            reconciliation_consumption_file,
+        ),
+        _report_file_signature(file_path),
     )
-    st.markdown("#### ETSO Bazl\u0131 T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131")
+    if st.session_state.get("consumption_report_signature") != current_signature:
+        st.session_state["consumption_report_signature"] = current_signature
+        st.session_state["consumption_report_bytes"] = None
+        st.session_state["consumption_report_error"] = None
+
+    st.markdown("#### Da\u011f\u0131t\u0131m Uzla\u015ft\u0131rma T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131")
     st.caption(
-        "Fatura, da\u011f\u0131t\u0131m, uzla\u015ft\u0131rma ve GES miktarlar\u0131 say\u0131 olarak saklan\u0131r "
-        "ve virg\u00fcl bi\u00e7iminde g\u00f6sterilir; GES verisi olmayan ETSO'larda 0 kullan\u0131l\u0131r. "
-        "Tek fark, Excel form\u00fcl\u00fcyle Da\u011f\u0131t\u0131m eksi Uzla\u015ft\u0131rma olarak hesaplan\u0131r. "
-        "Yaln\u0131zca -10 ile +10 kWh (dahil) aras\u0131ndaki fark h\u00fccreleri a\u00e7\u0131k sar\u0131d\u0131r; "
-        "Excel'de fark s\u00fctunundan Renge G\u00f6re Filtrele se\u00e7ene\u011fini kullanabilirsiniz."
+        "T\u00fcketim kar\u015f\u0131la\u015ft\u0131rma Excel'i analiz tamamlan\u0131rken haz\u0131rlan\u0131r. "
+        "GES dosyas\u0131 iste\u011fe ba\u011fl\u0131d\u0131r; se\u00e7ilmezse GES miktar\u0131 0 al\u0131n\u0131r. "
+        "Fark Da\u011f\u0131t\u0131m eksi Uzla\u015ft\u0131rma olarak hesaplan\u0131r."
     )
-    st.download_button(
-        f"ETSO Bazl\u0131 T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131n\u0131 \u0130ndir ({format_turkish_integer(len(rows))} ETSO)",
-        data=build_ges_consumption_difference_report(rows) if rows else b"",
-        file_name="ETSO_Tuketim_Karsilastirmasi.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key="download_ges_consumption_difference_report",
-        width="stretch",
-        disabled=not rows,
-        on_click="ignore",
-    )
-    if not rows:
-        st.info("Kar\u015f\u0131la\u015ft\u0131r\u0131lacak ETSO verisi bulunamad\u0131.")
+    if (
+        not st.session_state.get("consumption_report_bytes")
+        and not st.session_state.get("consumption_report_error")
+    ):
+        try:
+            with st.spinner("T\u00fcketim kar\u015f\u0131la\u015ft\u0131rma Excel'i haz\u0131rlan\u0131yor..."):
+                report_bytes, report_sources, report_errors, _ = prepare_invoice_report_workbook(
+                    output_bytes,
+                    invoice_file=invoice_file,
+                    mapping_path=mapping_path,
+                    system_usage_file=system_usage_file,
+                    reconciliation_consumption_file=reconciliation_consumption_file,
+                    invoice_only_mode=invoice_only_mode,
+                    existing_invoice_sources=invoice_sources,
+                )
+                if report_errors:
+                    raise ValueError("; ".join(report_errors))
+                has_reconciliation_input = bool(
+                    reconciliation_consumption_file
+                    or reconciliation_consumption_by_etso
+                    or any(
+                        isinstance(source.get("reconciliation_consumption_by_etso"), dict)
+                        for source in report_sources
+                    )
+                )
+                if not has_reconciliation_input:
+                    raise ValueError("Uzla\u015ft\u0131rma T\u00fcketim dosyas\u0131n\u0131 se\u00e7in.")
+                if file_path:
+                    if not os.path.isfile(file_path):
+                        raise FileNotFoundError(
+                            "Se\u00e7ilen GES \u00fcretimi dosyas\u0131 bulunamad\u0131; dosyay\u0131 yeniden se\u00e7in."
+                        )
+                    production_by_etso = load_cached_ges_production_by_etso(file_path)
+                else:
+                    production_by_etso = {}
+                source_reconciliation = reconciliation_consumption_by_etso or None
+                if source_reconciliation is None:
+                    source_reconciliation = next(
+                        (
+                            source.get("reconciliation_consumption_by_etso")
+                            for source in report_sources
+                            if isinstance(source.get("reconciliation_consumption_by_etso"), dict)
+                        ),
+                        None,
+                    )
+                invoice_tariff_by_etso = load_invoice_tariff_by_etso(invoice_file)
+                (
+                    invoice_consumption_by_etso,
+                    distribution_consumption_by_etso,
+                    reconciliation_by_etso,
+                    customer_name_by_etso,
+                    meter_id_by_etso,
+                    company_by_etso,
+                    tariff_group_by_etso,
+                ) = load_ges_comparison_source_maps(
+                    raw_df,
+                    report_bytes,
+                    report_sources,
+                    invoice_only_mode=invoice_only_mode,
+                    reconciliation_source_values=source_reconciliation,
+                    invoice_tariff_by_etso=invoice_tariff_by_etso,
+                )
+                rows = build_ges_consumption_difference_rows(
+                    production_by_etso,
+                    invoice_consumption_by_etso,
+                    distribution_consumption_by_etso,
+                    reconciliation_by_etso,
+                    customer_name_by_etso,
+                    meter_id_by_etso,
+                    company_by_etso,
+                    tariff_group_by_etso,
+                )
+                if not rows:
+                    raise ValueError("Kar\u015f\u0131la\u015ft\u0131r\u0131lacak ETSO verisi bulunamad\u0131.")
+                st.session_state["consumption_report_bytes"] = build_ges_consumption_difference_report(rows)
+                st.session_state["consumption_report_error"] = None
+        except Exception as error:
+            st.session_state["consumption_report_bytes"] = None
+            st.session_state["consumption_report_error"] = str(error)
+
+    if error_message := st.session_state.get("consumption_report_error"):
+        st.error(f"T\u00fcketim kar\u015f\u0131la\u015ft\u0131rmas\u0131 haz\u0131rlanamad\u0131: {error_message}")
+    if report_bytes := st.session_state.get("consumption_report_bytes"):
+        st.download_button(
+            "T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rma Excel'ini \u0130ndir",
+            data=report_bytes,
+            file_name="ETSO_Tuketim_Karsilastirmasi.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_ges_consumption_difference_report",
+            width="stretch",
+            on_click="ignore",
+        )
 
 def render_reconciliation_difference_report_area(
     invoice_sources: list[dict[str, Any]],
@@ -4058,39 +4381,81 @@ def render_reconciliation_difference_report_area(
 def render_fee_difference_transfer_area(
     output_bytes: bytes | None,
     invoice_sources: list[dict[str, Any]],
+    *,
+    invoice_only_mode: bool,
+    invoice_file: str | None,
+    mapping_path: str | None,
+    system_usage_file: str | None,
+    reconciliation_consumption_file: str | None,
 ) -> None:
-    comparison_available = any(
-        source.get("reconciliation_sheet_name") for source in invoice_sources
-    )
-    if not output_bytes or not comparison_available:
+    if not output_bytes:
         return
 
-    st.markdown("#### Diğer Bedel Tablosu")
+    st.markdown("#### Di\u011fer Bedel Tablosu")
     st.caption(
-        "Yalnızca ETSO eşleşen kayıtlar aktarılır. Dağıtım, güç ve güç aşım bedellerinde "
-        "-10 ile +10 TL (dahil) arasındaki farklar; reaktif bedelde 0 TL fark aktarılmaz. "
-        "Tutar, dağıtım bedeli eksi bizim bedelimiz olarak yazılır."
+        "Yaln\u0131zca ETSO e\u015fle\u015fen kay\u0131tlar aktar\u0131l\u0131r. Da\u011f\u0131t\u0131m, g\u00fc\u00e7 ve g\u00fc\u00e7 a\u015f\u0131m bedellerinde "
+        "-10 ile +10 TL (dahil) aras\u0131ndaki farklar; reaktif bedelde 0 TL fark aktar\u0131lmaz. "
+        "Tutar, da\u011f\u0131t\u0131m bedeli eksi bizim bedelimiz olarak yaz\u0131l\u0131r. "
+        "Tablo analiz tamamlan\u0131rken haz\u0131rlan\u0131r."
     )
-    current_signature = st.session_state.get("analysis_signature")
-    if (
-        st.session_state.get("fee_difference_transfer_signature") != current_signature
-        or (
-            not st.session_state.get("fee_difference_transfer_bytes")
-            and not st.session_state.get("fee_difference_transfer_error")
-        )
-    ):
+    current_signature = invoice_report_input_signature(
+        invoice_file,
+        mapping_path,
+        system_usage_file,
+        reconciliation_consumption_file,
+    )
+    if st.session_state.get("fee_difference_transfer_signature") != current_signature:
         st.session_state["fee_difference_transfer_bytes"] = None
         st.session_state["fee_difference_transfer_stats"] = {}
         st.session_state["fee_difference_transfer_error"] = None
-        try:
-            transfer_bytes, transfer_stats = build_fee_difference_transfer_workbook(output_bytes)
-            st.session_state["fee_difference_transfer_bytes"] = transfer_bytes
-            st.session_state["fee_difference_transfer_stats"] = transfer_stats
-        except Exception as error:
-            st.session_state["fee_difference_transfer_error"] = (
-                f"Ek kalem bedel aktarımı hazırlanamadı: {type(error).__name__}: {error}"
-            )
         st.session_state["fee_difference_transfer_signature"] = current_signature
+
+    has_invoice_comparison = any(
+        source.get("reconciliation_sheet_name") for source in invoice_sources
+    )
+    can_prepare = bool(
+        (invoice_only_mode and has_invoice_comparison)
+        or (invoice_file and os.path.isfile(invoice_file))
+    )
+    if not can_prepare:
+        st.info("Di\u011fer bedel tablosu i\u00e7in Bizim Kesti\u011fimiz Faturalar dosyas\u0131n\u0131 se\u00e7in.")
+    elif (
+        not st.session_state.get("fee_difference_transfer_bytes")
+        and not st.session_state.get("fee_difference_transfer_error")
+    ):
+        try:
+            with st.spinner("Di\u011fer bedeller tablosu haz\u0131rlan\u0131yor..."):
+                report_bytes, report_sources, report_errors, report_signature = (
+                    prepare_invoice_report_workbook(
+                        output_bytes,
+                        invoice_file=invoice_file,
+                        mapping_path=mapping_path,
+                        system_usage_file=system_usage_file,
+                        reconciliation_consumption_file=reconciliation_consumption_file,
+                        invoice_only_mode=invoice_only_mode,
+                        existing_invoice_sources=invoice_sources,
+                    )
+                )
+                if report_errors:
+                    raise ValueError("; ".join(report_errors))
+                if not any(source.get("reconciliation_sheet_name") for source in report_sources):
+                    raise ValueError(
+                        "Da\u011f\u0131t\u0131m ile fatura kar\u015f\u0131la\u015ft\u0131rmas\u0131 olu\u015fmad\u0131. "
+                        "Fatura ve da\u011f\u0131t\u0131m verilerini kontrol edin."
+                    )
+                if not report_bytes:
+                    raise ValueError("SKF tablosu bulunamad\u0131.")
+                transfer_bytes, transfer_stats = build_fee_difference_transfer_workbook(report_bytes)
+                st.session_state["fee_difference_transfer_bytes"] = transfer_bytes
+                st.session_state["fee_difference_transfer_stats"] = transfer_stats
+                st.session_state["fee_difference_transfer_error"] = None
+                st.session_state["fee_difference_transfer_signature"] = report_signature
+        except Exception as error:
+            st.session_state["fee_difference_transfer_bytes"] = None
+            st.session_state["fee_difference_transfer_stats"] = {}
+            st.session_state["fee_difference_transfer_error"] = (
+                f"Ek kalem bedel aktar\u0131m\u0131 haz\u0131rlanamad\u0131: {type(error).__name__}: {error}"
+            )
 
     transfer_error = st.session_state.get("fee_difference_transfer_error")
     if transfer_error:
@@ -4100,26 +4465,23 @@ def render_fee_difference_transfer_area(
     transfer_bytes = st.session_state.get("fee_difference_transfer_bytes")
     transfer_stats = st.session_state.get("fee_difference_transfer_stats") or {}
     exported_rows = int(transfer_stats.get("exported_rows", 0))
-    st.download_button(
-        f"Ek Kalem Bedel Farklarını İndir ({format_turkish_integer(exported_rows)} satır)",
-        data=transfer_bytes or b"",
-        file_name="FaturaDigerEkKalemBedelAktarim.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key="fee_difference_transfer_download",
-        width="stretch",
-        disabled=not transfer_bytes,
-        on_click="ignore",
-    )
-    if exported_rows == 0:
-        st.info("Aktarım kurallarına uyan ve Sayaç ID bilgisi bulunan bedel farkı yok.")
-    skipped_missing_meter_id = int(transfer_stats.get("skipped_missing_meter_id", 0))
-    if skipped_missing_meter_id:
-        st.warning(
-            f"Sayaç ID bilgisi bulunamadığı veya tekil eşleşmediği için "
-            f"{format_turkish_integer(skipped_missing_meter_id)} "
-            "fark satırı aktarım dışında kaldı."
+    if transfer_bytes:
+        st.download_button(
+            f"Ek Kalem Bedel Farklar\u0131n\u0131 \u0130ndir ({format_turkish_integer(exported_rows)} sat\u0131r)",
+            data=transfer_bytes,
+            file_name="FaturaDigerEkKalemBedelAktarim.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="fee_difference_transfer_download",
+            width="stretch",
+            on_click="ignore",
         )
-
+    if transfer_bytes and exported_rows == 0:
+        st.info("Aktar\u0131m kurallar\u0131na uyan ve Saya\u00e7 ID bilgisi bulunan bedel fark\u0131 yok.")
+    skipped_missing_meter_id = int(transfer_stats.get("skipped_missing_meter_id", 0))
+    if transfer_bytes and skipped_missing_meter_id:
+        st.warning(
+            f"{format_turkish_integer(skipped_missing_meter_id)} kay\u0131t Saya\u00e7 ID bulunmad\u0131\u011f\u0131 i\u00e7in atland\u0131."
+        )
 
 def add_invoice_distribution_comparison_worksheet(
     report_workbook: Any,
@@ -4599,6 +4961,7 @@ def add_invoice_distribution_comparison_worksheet(
     }
 
 
+def build_company_comparison_reports(
     output_bytes: bytes | None,
     selected_companies: Iterable[str] | None = None,
     include_group_mismatches: bool = True,
@@ -5431,22 +5794,45 @@ def run_analysis_pipeline(
 
     captured_core_output = io.StringIO()
     with contextlib.redirect_stdout(captured_core_output):
+        def report_region_progress(message: str, percent: int) -> None:
+            if not status_callback:
+                return
+            if percent >= 100:
+                status_callback(
+                    (
+                        "Dağıtım verileri okundu; SKF çıktı sayfaları hazırlanıyor."
+                        if distribution_only_mode or not invoice_file
+                        else "Dağıtım verileri okundu; fatura ve ETSO rapor adımları sürüyor."
+                    ),
+                    72,
+                )
+                return
+            status_callback(message, min(70, max(0, int(round(percent * 0.7)))))
+
         extracted_records, stats = process_all_regions(
             base_path=root_folder,
             mapping_file_path=mapping_path,
-            status_callback=status_callback,
+            status_callback=report_region_progress,
             return_stats=True,
         )
+        if status_callback:
+            status_callback("ETSO kayıtları ve dağıtım şirketi alanları düzenleniyor.", 75)
         normalized_records = normalize_extracted_regions(extracted_records)
         # ENO zenginleştirme: EIC dönüşümü, Sayaç ID aktarımı ve boş Müşteri doldurma
+        if status_callback:
+            status_callback("Sayaç ve EIC bilgileri Kesin Liste ile eşleştiriliyor.", 79)
         eno_stats = enrich_from_eno_file(
             normalized_records,
             root_folder,
             eno_file_path=eno_file_path,
         )
+        if status_callback:
+            status_callback("Dağıtım Excel'i ve özet sayfası hazırlanıyor.", 84)
         output_buffer = io.BytesIO()
         save_to_excel(normalized_records, output_buffer)
         output_bytes = add_summary_worksheet(output_buffer.getvalue(), normalized_records)
+        if status_callback and invoice_file:
+            status_callback("Fatura dosyası aktarılıyor; tarifeler ve ETSO karşılaştırmaları hazırlanıyor.", 89)
         output_bytes, invoice_sources, invoice_file_errors, invoice_file_count = append_selected_invoice_file(
             output_bytes,
             invoice_file,
@@ -5457,6 +5843,12 @@ def run_analysis_pipeline(
         if invoice_file and (invoice_file_count != 1 or not invoice_sources) and not invoice_file_errors:
             invoice_file_errors.append(
                 "Seçilen fatura dosyasından çıktı sayfaları oluşturulamadı. Dosyanın çalışma sayfalarını kontrol edin."
+            )
+        if status_callback:
+            status_callback(
+                "SKF tablosu ve fatura kar\u015f\u0131la\u015ft\u0131rma sayfalar\u0131 son kontrolden ge\u00e7iriliyor."
+                if invoice_file else "SKF tablosu son kontrollerden ge\u00e7iriliyor.",
+                96,
             )
         reconciliation_consumption_by_etso = next(
             (
@@ -5590,6 +5982,8 @@ def run_analysis_pipeline(
             )
             if warning:
                 logs.append(f"{source.get('output_sheet_name', OUR_INVOICES_LABEL)}: {warning}")
+    if status_callback:
+        status_callback("Analiz tamamlandı.", 100)
     return raw_df, stats, audit_results, output_bytes, logs, invoice_sources
 
 
@@ -6044,6 +6438,7 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         category="invoice",
         selected_key="selected_invoice_file",
         container=st.sidebar,
+        invalidate_analysis=False,
     )
     render_reconciliation_consumption_file_picker()
     selected_eno_file = render_browser_excel_picker(
@@ -6098,7 +6493,6 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             "Bizim Kestiğimiz Faturalar için Excel dosyasını seçin"
         )
         if selected_file:
-            clear_analysis_state()
             st.session_state["selected_invoice_file"] = selected_file
             st.session_state["manual_selected_invoice_file"] = selected_file
             st.rerun()
@@ -6171,7 +6565,6 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
         ).strip()
     if (
         root_folder != st.session_state.get("selected_root_folder", "")
-        or invoice_file != st.session_state.get("selected_invoice_file", "")
         or selected_eno_file != st.session_state.get("selected_eno_file", "")
     ):
         clear_analysis_state()
@@ -6350,6 +6743,7 @@ def render_system_usage_file_picker() -> None:
             category="system_usage",
             selected_key="selected_system_usage_file",
             container=st,
+            invalidate_analysis=False,
         )
         return
     selected_file = st.session_state.get("selected_system_usage_file", "")
@@ -6383,8 +6777,6 @@ def render_system_usage_file_picker() -> None:
                 st.error("Lütfen bir Excel dosyası seçin.")
             else:
                 st.session_state["selected_system_usage_file"] = new_file
-                if new_file != selected_file:
-                    clear_analysis_state()
                 save_error = save_system_usage_file_selection(new_file)
                 if save_error:
                     st.warning(
@@ -6410,7 +6802,8 @@ def render_reconciliation_consumption_file_picker() -> None:
             category="reconciliation",
             selected_key="selected_reconciliation_consumption_file",
             container=st.sidebar,
-            help="Bu dosya bir analizde kullanılır; sonraki analiz için yeniden seçin.",
+            help="T\u00fcketim kar\u015f\u0131la\u015ft\u0131rma raporu i\u00e7in kullan\u0131l\u0131r.",
+            invalidate_analysis=False,
         )
         return
     selected_file = st.session_state.get("selected_reconciliation_consumption_file", "")
@@ -6442,8 +6835,6 @@ def render_reconciliation_consumption_file_picker() -> None:
                 st.sidebar.error("Lütfen bir Excel dosyası seçin.")
             else:
                 st.session_state["selected_reconciliation_consumption_file"] = new_file
-                if new_file != selected_file:
-                    clear_analysis_state()
                 st.rerun()
         else:
             st.sidebar.info("Dosya seçilmedi veya dosya penceresi açılamadı.")
@@ -6632,6 +7023,9 @@ def render_analysis_panel(
         "" if distribution_only_mode
         else st.session_state.get("selected_reconciliation_consumption_file", "")
     ).strip()
+    invoice_only_mode = bool(
+        not distribution_only_mode and not valid_root and invoice_file and valid_invoice_file
+    )
     if not root_folder and invoice_file and valid_invoice_file:
         st.info("Da\u011f\u0131t\u0131m klas\u00f6r\u00fc y\u00fcklenmeden yaln\u0131zca Bizim Kesti\u011fimiz Faturalar verisi haz\u0131rlanabilir.")
     elif not root_folder:
@@ -6659,6 +7053,7 @@ def render_analysis_panel(
         else "",
         os.path.normcase(os.path.abspath(selected_eno_file)) if selected_eno_file else "",
         distribution_only_mode,
+        invoice_only_mode,
     )
     if (
         st.session_state.get("processing_done")
@@ -6669,9 +7064,9 @@ def render_analysis_panel(
     if (
         run_button
         and mapping_path
-        and valid_invoice_file
-        and (valid_eno_file or (not root_folder and bool(invoice_file)))
-        and (valid_root or (not root_folder and bool(invoice_file)))
+        and (valid_invoice_file or distribution_only_mode)
+        and (valid_eno_file or invoice_only_mode)
+        and (valid_root or invoice_only_mode)
     ):
         clear_analysis_state()
         progress_bar = st.progress(0)
@@ -6684,21 +7079,30 @@ def render_analysis_panel(
 
         try:
             with st.spinner(
-                "Dağıtım SKF dosyaları okunuyor ve 21 bölge birleştiriliyor."
+                "Da\u011f\u0131t\u0131m SKF dosyalar\u0131 okunuyor ve 21 b\u00f6lge birle\u015ftiriliyor."
                 if distribution_only_mode
-                else "Fatura dosyaları okunuyor ve ETSO kayıtları birleştiriliyor."
+                else "Fatura dosyalar\u0131 okunuyor ve ETSO kay\u0131tlar\u0131 birle\u015ftiriliyor."
+                if invoice_only_mode
+                else "Da\u011f\u0131t\u0131m SKF ve fatura kar\u015f\u0131la\u015ft\u0131rma sayfalar\u0131 haz\u0131rlan\u0131yor."
+                if invoice_file
+                else "Da\u011f\u0131t\u0131m SKF verileri birle\u015ftiriliyor ve tablo haz\u0131rlan\u0131yor."
             ):
                 raw_df, stats, audit_results, output_bytes, logs, invoice_sources = run_analysis_pipeline(
                     root_folder,
                     mapping_path,
                     update_progress,
-                    invoice_file=invoice_file or None,
+                    invoice_file=(
+                        None if distribution_only_mode else invoice_file or None
+                    ),
                     system_usage_file=(
                         None if distribution_only_mode
                         else st.session_state.get("selected_system_usage_file") or None
                     ),
                     eno_file_path=selected_eno_file if valid_eno_file and selected_eno_file else None,
-                    reconciliation_consumption_file=selected_reconciliation_consumption_file or None,
+                    reconciliation_consumption_file=(
+                        None if distribution_only_mode
+                        else selected_reconciliation_consumption_file or None
+                    ),
                     distribution_only_mode=distribution_only_mode,
                 )
             st.session_state["extracted_df"] = raw_df
@@ -6784,13 +7188,6 @@ def render_analysis_panel(
             for log_line in st.session_state.get("processing_logs", []):
                 st.code(log_line, language=None)
         return
-    render_ges_consumption_difference_report_area(
-        raw_df,
-        output_bytes,
-        invoice_sources,
-        invoice_only_mode=bool(stats.get("invoice_only_mode")),
-        reconciliation_consumption_by_etso=stats.get("reconciliation_consumption_by_etso"),
-    )
     if stats.get("invoice_only_mode"):
         for invoice_error in stats.get("invoice_file_errors", []):
             st.error(f"{OUR_INVOICES_LABEL}: {invoice_error}")
@@ -6826,7 +7223,26 @@ def render_analysis_panel(
             hide_index=True,
             height=620,
         )
-        render_fee_difference_transfer_area(output_bytes, invoice_sources)
+        render_ges_consumption_difference_report_area(
+            raw_df,
+            output_bytes,
+            invoice_sources,
+            invoice_only_mode=bool(stats.get("invoice_only_mode")),
+            invoice_file=invoice_file or None,
+            mapping_path=mapping_path,
+            system_usage_file=st.session_state.get("selected_system_usage_file") or None,
+            reconciliation_consumption_file=selected_reconciliation_consumption_file or None,
+            reconciliation_consumption_by_etso=stats.get("reconciliation_consumption_by_etso"),
+        )
+        render_fee_difference_transfer_area(
+            output_bytes,
+            invoice_sources,
+            invoice_only_mode=bool(stats.get("invoice_only_mode")),
+            invoice_file=invoice_file or None,
+            mapping_path=mapping_path,
+            system_usage_file=st.session_state.get("selected_system_usage_file") or None,
+            reconciliation_consumption_file=selected_reconciliation_consumption_file or None,
+        )
         with st.expander("\u0130\u015flem Loglar\u0131", expanded=False):
             for log_line in st.session_state.get("processing_logs", []):
                 st.code(log_line, language=None)
@@ -6882,7 +7298,7 @@ def render_analysis_panel(
         f"Filtrelenen bozuk kayıt: {format_turkish_integer(stats.get('absurd_filtered', 0))}"
     )
 
-    st.markdown("#### Abone Grubu Farkları")
+    st.markdown("#### Abone Grubu Farklar\u0131")
     group_mismatches = st.session_state.get("subscription_group_mismatches") or []
     group_comparison_available = any(
         source.get("reconciliation_sheet_name") for source in invoice_sources
@@ -6894,9 +7310,9 @@ def render_analysis_panel(
             use_container_width=True,
         )
     elif group_comparison_available:
-        st.success("Abone grubu farklı olan ETSO kaydı bulunamadı.")
+        st.success("Abone grubu farkl\u0131 olan ETSO kayd\u0131 bulunamad\u0131.")
     else:
-        st.caption("Abone grubu farklarını görmek için fatura ve dağıtım verisi içeren bir analiz çalıştırın.")
+        st.caption("Abone grubu farklar\u0131n\u0131 g\u00f6rmek i\u00e7in fatura ve da\u011f\u0131t\u0131m verisi i\u00e7eren bir analiz \u00e7al\u0131\u015ft\u0131r\u0131n.")
 
     preview_title, download_column = st.columns([5, 2], gap="small", vertical_alignment="center")
     with preview_title:
@@ -6929,7 +7345,26 @@ def render_analysis_panel(
         hide_index=True,
         height=620,
     )
-    render_fee_difference_transfer_area(output_bytes, invoice_sources)
+    render_ges_consumption_difference_report_area(
+        raw_df,
+        output_bytes,
+        invoice_sources,
+        invoice_only_mode=bool(stats.get("invoice_only_mode")),
+        invoice_file=invoice_file or None,
+        mapping_path=mapping_path,
+        system_usage_file=st.session_state.get("selected_system_usage_file") or None,
+        reconciliation_consumption_file=selected_reconciliation_consumption_file or None,
+        reconciliation_consumption_by_etso=stats.get("reconciliation_consumption_by_etso"),
+    )
+    render_fee_difference_transfer_area(
+        output_bytes,
+        invoice_sources,
+        invoice_only_mode=bool(stats.get("invoice_only_mode")),
+        invoice_file=invoice_file or None,
+        mapping_path=mapping_path,
+        system_usage_file=st.session_state.get("selected_system_usage_file") or None,
+        reconciliation_consumption_file=selected_reconciliation_consumption_file or None,
+    )
 
     if invoice_sources:
         st.markdown(f"#### {OUR_INVOICES_LABEL}")
