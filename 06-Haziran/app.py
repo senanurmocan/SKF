@@ -3688,12 +3688,11 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
             if column == len(headers):
                 distribution_value = row.get(distribution_header)
                 reconciliation_value = row.get(reconciliation_header)
-                cell.value = (
-                    f'=IF(COUNT({distribution_column}{row_index}:{reconciliation_column}{row_index})=2,'
-                    f'{distribution_column}{row_index}-{reconciliation_column}{row_index},"-")'
-                )
                 cell.fill = PatternFill(fill_type=None)
-                if distribution_value is not None and reconciliation_value is not None:
+                if distribution_value is None or reconciliation_value is None:
+                    cell.value = "-"
+                else:
+                    cell.value = f"={distribution_column}{row_index}-{reconciliation_column}{row_index}"
                     difference = distribution_value - reconciliation_value
                     if -10 <= difference <= 10:
                         cell.fill = difference_range_fill
@@ -5640,13 +5639,6 @@ def add_summary_worksheet(output_bytes: bytes, records: list[dict[str, Any]]) ->
     summary_sheet.sheet_view.showGridLines = False
     summary_sheet.sheet_view.zoomScale = 85
     summary_sheet.row_dimensions[1].height = 42
-    for column_cells in summary_sheet.columns:
-        column_letter = column_cells[0].column_letter
-        max_length = max(
-            (len(str(cell.value or "")) for cell in column_cells if cell.data_type != "f"),
-            default=0,
-        )
-        summary_sheet.column_dimensions[column_letter].width = min(max(max_length + 2, 16), 30)
     summary_sheet.column_dimensions["A"].width = 30
     for column_index in range(2, 9):
         summary_sheet.column_dimensions[summary_sheet.cell(1, column_index).column_letter].width = 19

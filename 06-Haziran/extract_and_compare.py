@@ -1255,6 +1255,18 @@ def resolve_column_indices(headers, region_mapping, sample_rows=None):
 
     normalized_headers = [normalize_header(h) for h in headers]
     resolved = {}
+    norm_reg = normalize_region_name(region_mapping.get('region_name', ''), to_format='reference')
+    normalized_cambibel = normalize_header('Çamlıbel EDAŞ')
+
+    # Reuse static header mappings for repeated layouts within this analysis.
+    # Çamlıbel remains uncached because its duplicate Tarife column is selected
+    # from sample values below.
+    if normalize_header(norm_reg) != normalized_cambibel and isinstance(region_mapping, dict):
+        cache = region_mapping.setdefault('_column_resolution_cache', {})
+        cache_key = tuple(normalized_headers)
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result.copy()
 
     # Prefer an exact mapped or adjacent header before the existing full-row fallback.
     def find_header_near_mapping(expected_normalized, mapped_index):
@@ -1278,9 +1290,7 @@ def resolve_column_indices(headers, region_mapping, sample_rows=None):
             return normalized_headers.index(expected_normalized)
         return -1
 
-    norm_reg = normalize_region_name(region_mapping.get('region_name', ''), to_format='reference')
     force_fixed_fields = set(region_mapping.get('rules', {}).get('force_fixed_fields', []))
-    normalized_cambibel = normalize_header('Çamlıbel EDAŞ')
     cambibel_category_index = -1
 
     # Çamlıbel kaynaklarında "Tarife" başlığı birden fazla sütunda bulunabiliyor.
@@ -1375,6 +1385,11 @@ def resolve_column_indices(headers, region_mapping, sample_rows=None):
             found_idx = -1
 
         resolved[field] = found_idx
+
+    if normalize_header(norm_reg) != normalized_cambibel and isinstance(region_mapping, dict):
+        if len(cache) >= 64:
+            cache.pop(next(iter(cache)))
+        cache[cache_key] = resolved.copy()
 
     return resolved
 
