@@ -1090,11 +1090,7 @@ def initialize_session_state() -> None:
         "audit_results": {},
         "output_bytes": None,
         "invoice_sources": [],
-        "company_comparison_reports": {},
         "subscription_group_mismatches": [],
-        "comparison_report_warning": None,
-        "company_report_selection": None,
-        "company_report_generated": False,
         "fee_difference_transfer_bytes": None,
         "fee_difference_transfer_signature": None,
         "fee_difference_transfer_stats": {},
@@ -1158,11 +1154,7 @@ def clear_analysis_state() -> None:
     st.session_state["audit_results"] = {}
     st.session_state["output_bytes"] = None
     st.session_state["invoice_sources"] = []
-    st.session_state["company_comparison_reports"] = {}
     st.session_state["subscription_group_mismatches"] = []
-    st.session_state["comparison_report_warning"] = None
-    st.session_state["company_report_selection"] = None
-    st.session_state["company_report_generated"] = False
     st.session_state["fee_difference_transfer_bytes"] = None
     st.session_state["fee_difference_transfer_signature"] = None
     st.session_state["fee_difference_transfer_stats"] = {}
@@ -3452,6 +3444,223 @@ def load_distribution_consumption_by_etso(raw_df: pd.DataFrame) -> dict[str, flo
     return consumption_by_etso
 
 
+def _optional_identifier_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (int, float)) and math.isfinite(float(value)):
+        number = float(value)
+        return str(int(number)) if number.is_integer() else str(value)
+    text = str(value).strip()
+    return text if text and text.casefold() not in {"nan", "none", "-"} else None
+
+
+def load_ges_comparison_source_maps(
+    raw_df: pd.DataFrame,
+    output_bytes: bytes | None,
+    invoice_sources: list[dict[str, Any]],
+    *,
+    invoice_only_mode: bool,
+    reconciliation_source_values: dict[str, float | None] | None = None,
+) -> tuple[
+    dict[str, float | None],
+    dict[str, float | None],
+    dict[str, float | None],
+    dict[str, str],
+    dict[str, str],
+    dict[str, str],
+]:
+    """Collect GES report inputs with one pass over the generated workbook."""
+    invoice_by_etso: dict[str, float | None] = {}
+    distribution_by_etso: dict[str, float | None] = {}
+    reconciliation_by_etso: dict[str, float | None] = {}
+    customer_by_etso: dict[str, str] = {}
+    meter_id_by_etso: dict[str, str] = {}
+    company_by_etso: dict[str, str] = {}
+
+    source_reconciliation = reconciliation_source_values
+    if source_reconciliation is None:
+        source_reconciliation = next(
+            (
+                source.get("reconciliation_consumption_by_etso")
+                for source in invoice_sources
+                if isinstance(source.get("reconciliation_consumption_by_etso"), dict)
+            ),
+            None,
+        )
+    has_reconciliation_source = source_reconciliation is not None
+    if isinstance(source_reconciliation, dict):
+        for code_value, amount_value in source_reconciliation.items():
+            code = reconciliation_etso_key(code_value)
+            if code:
+                reconciliation_by_etso.setdefault(code, _optional_consumption_number(amount_value))
+
+    def find_column(headers: dict[str, Any], *aliases: str) -> Any:
+        return next(
+            (
+                headers[key]
+                for alias in aliases
+                if (key := _normalize_tariff_lookup_key(alias)) in headers
+            ),
+            None,
+        )
+
+    def add_text_value(target: dict[str, str], code_value: Any, value: Any) -> None:
+        code = reconciliation_etso_key(code_value)
+        text = _optional_identifier_text(value)
+        if code and text:
+            target.setdefault(code, text)
+
+    if raw_df is not None and not raw_df.empty:
+        raw_headers = {
+            _normalize_tariff_lookup_key(column): column
+            for column in raw_df.columns
+        }
+        raw_etso = find_column(raw_headers, "ETSO Kodu", "ETSO")
+        raw_energy = find_column(raw_headers, "Aktif Enerji Tüketim (kWh)")
+        raw_customer = find_column(raw_headers, "Müşteri", "Müşteri Adı", "Ünvan", "Ad Soyad")
+        raw_meter = find_column(raw_headers, "Sayaç ID", "Sayac ID")
+        raw_company = find_column(raw_headers, "Dağıtım Şirketi", "Dağıtım Bölgesi")
+        if raw_etso is not None:
+            columns = [raw_df[raw_etso]]
+            columns.extend(
+                raw_df[column] if column is not None else (None for _ in range(len(raw_df)))
+                for column in (raw_customer, raw_meter, raw_company, raw_energy)
+            )
+            for code_value, customer_value, meter_value, company_value, energy_value in zip(*columns):
+                code = reconciliation_etso_key(code_value)
+                if not code:
+                    continue
+                add_text_value(customer_by_etso, code, customer_value)
+                add_text_value(meter_id_by_etso, code, meter_value)
+                add_text_value(company_by_etso, code, company_value)
+                if not invoice_only_mode and raw_energy is not None:
+                    _add_optional_consumption_aggregate(
+                        distribution_by_etso,
+                        code,
+                        _optional_consumption_number(energy_value),
+                    )
+
+    if output_bytes:
+        from openpyxl import load_workbook
+
+        invoice_sheet_names = {
+            source.get("comparison_sheet_name")
+            for source in invoice_sources
+            if source.get("comparison_sheet_name")
+        }
+        reconciliation_sheet_names = {
+            sheet_name
+            for source in invoice_sources
+            for sheet_name in (
+                source.get("reconciliation_consumption_sheet_name"),
+                source.get("reconciliation_consumption_comparison_sheet_name"),
+            )
+            if sheet_name
+        }
+        workbook = load_workbook(io.BytesIO(output_bytes), read_only=True, data_only=True)
+        try:
+            detail_name = _normalize_tariff_lookup_key("Dağıtımın Kestiği")
+            for worksheet in workbook.worksheets:
+                is_detail = _normalize_tariff_lookup_key(worksheet.title) == detail_name
+                is_invoice = worksheet.title in invoice_sheet_names
+                is_reconciliation = worksheet.title in reconciliation_sheet_names
+                if not (is_detail or is_invoice or is_reconciliation):
+                    continue
+
+                headers = {
+                    _normalize_tariff_lookup_key(cell.value): cell.column
+                    for cell in next(worksheet.iter_rows(min_row=1, max_row=1), ())
+                    if cell.value is not None
+                }
+                etso_column = find_column(headers, "ETSO", "ETSO Kodu", "Etso Kodu")
+                if etso_column is None:
+                    continue
+                company_column = find_column(headers, "Dağıtım Şirketi", "Dağıtım Bölgesi")
+                meter_column = find_column(headers, "Sayaç ID", "Sayac ID")
+                customer_column = find_column(headers, "Müşteri", "Müşteri Adı", "Ünvan", "Ad Soyad")
+                energy_column = find_column(headers, "Aktif Enerji Tüketim (kWh)") if is_invoice else None
+                reconciliation_column = (
+                    find_column(headers, "Uzlaştırma Tüketim (kWh)", "Uzlaştırma Tüketimi (kWh)")
+                    if is_reconciliation or is_invoice else None
+                )
+                needed_columns = [
+                    column for column in (
+                        etso_column, company_column, meter_column, customer_column,
+                        energy_column, reconciliation_column,
+                    ) if column is not None
+                ]
+                if len(needed_columns) == 1:
+                    continue
+                last_column = max(needed_columns)
+                for row in worksheet.iter_rows(min_row=2, max_col=last_column, values_only=True):
+                    code_value = row[etso_column - 1] if len(row) >= etso_column else None
+                    code = reconciliation_etso_key(code_value)
+                    if not code:
+                        continue
+                    if company_column is not None:
+                        add_text_value(company_by_etso, code, row[company_column - 1] if len(row) >= company_column else None)
+                    if meter_column is not None:
+                        add_text_value(meter_id_by_etso, code, row[meter_column - 1] if len(row) >= meter_column else None)
+                    if customer_column is not None:
+                        add_text_value(customer_by_etso, code, row[customer_column - 1] if len(row) >= customer_column else None)
+                    if energy_column is not None:
+                        _add_optional_consumption_aggregate(
+                            invoice_by_etso,
+                            code,
+                            _optional_consumption_number(row[energy_column - 1] if len(row) >= energy_column else None),
+                        )
+                    if (
+                        reconciliation_column is not None
+                        and not has_reconciliation_source
+                    ):
+                        amount = _optional_consumption_number(
+                            row[reconciliation_column - 1]
+                            if len(row) >= reconciliation_column else None
+                        )
+                        if code not in reconciliation_by_etso or (
+                            reconciliation_by_etso[code] is None and amount is not None
+                        ):
+                            reconciliation_by_etso[code] = amount
+        finally:
+            workbook.close()
+
+    return (
+        invoice_by_etso,
+        distribution_by_etso,
+        reconciliation_by_etso,
+        customer_by_etso,
+        meter_id_by_etso,
+        company_by_etso,
+    )
+
+
+def load_cached_ges_production_by_etso(file_path: str) -> dict[str, float | None]:
+    """Reuse the selected GES file's parsed values for this Streamlit session."""
+    stat = os.stat(file_path)
+    signature = (
+        os.path.normcase(os.path.abspath(file_path)),
+        stat.st_size,
+        stat.st_mtime_ns,
+    )
+    cached = st.session_state.get("ges_production_cache")
+    if isinstance(cached, dict) and cached.get("signature") == signature:
+        values = cached.get("values")
+        if isinstance(values, dict):
+            return values.copy()
+
+    values = load_ges_production_by_etso(file_path)
+    st.session_state["ges_production_cache"] = {
+        "signature": signature,
+        "values": values,
+    }
+    return values.copy()
+
+
 
 def load_customer_name_by_etso(
     raw_df: pd.DataFrame,
@@ -3625,6 +3834,8 @@ def build_ges_consumption_difference_rows(
     distribution_consumption_by_etso: dict[str, float | None],
     reconciliation_consumption_by_etso: dict[str, float | None],
     customer_name_by_etso: dict[str, str] | None = None,
+    meter_id_by_etso: dict[str, str] | None = None,
+    company_by_etso: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return every ETSO and numeric source values for the comparison report."""
     rows: list[dict[str, Any]] = []
@@ -3635,6 +3846,8 @@ def build_ges_consumption_difference_rows(
         | set(reconciliation_consumption_by_etso)
     )
     customer_name_by_etso = customer_name_by_etso or {}
+    meter_id_by_etso = meter_id_by_etso or {}
+    company_by_etso = company_by_etso or {}
     for code in all_codes:
         production = production_by_etso.get(code)
         rows.append({
@@ -3643,6 +3856,8 @@ def build_ges_consumption_difference_rows(
             "Bizim Kesti\u011fimiz T\u00fcketim (kWh)": invoice_consumption_by_etso.get(code),
             "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)": distribution_consumption_by_etso.get(code),
             "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)": reconciliation_consumption_by_etso.get(code),
+            "Saya\u00e7 ID": meter_id_by_etso.get(code),
+            "Da\u011f\u0131t\u0131m \u015eirketi": company_by_etso.get(code),
             "GES \u00dcretimi (kWh)": 0 if production is None else production,
         })
     return rows
@@ -3659,6 +3874,8 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
         "Bizim Kesti\u011fimiz T\u00fcketim (kWh)",
         "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)",
         "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)",
+        "Saya\u00e7 ID",
+        "Da\u011f\u0131t\u0131m \u015eirketi",
         "GES \u00dcretimi (kWh)",
         "Da\u011f\u0131t\u0131m - Uzla\u015ft\u0131rma Fark\u0131 (kWh)",
     ]
@@ -3701,17 +3918,17 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
                 continue
 
             value = row.get(header)
-            if column == 6 and value is None:
+            if column == 8 and value is None:
                 value = 0
             cell.value = value if value is not None else "-"
             cell.alignment = Alignment(vertical="center")
-            if column >= 3 and value is not None:
+            if column in {3, 4, 5, 8} and value is not None:
                 cell.number_format = '#,##0.00;[Red]-#,##0.00;0.00'
 
     worksheet.freeze_panes = "C2"
     worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(rows) + 1)}"
     worksheet.row_dimensions[1].height = 42
-    for column, width in enumerate([24, 38, 30, 34, 28, 24, 38], start=1):
+    for column, width in enumerate([24, 38, 30, 34, 28, 20, 24, 24, 38], start=1):
         worksheet.column_dimensions[get_column_letter(column)].width = width
 
     legend_row = len(rows) + 3
@@ -3743,23 +3960,20 @@ def render_ges_consumption_difference_report_area(
         return
 
     try:
-        production_by_etso = load_ges_production_by_etso(file_path)
-        invoice_consumption_by_etso = load_invoice_consumption_by_etso(
-            output_bytes,
-            invoice_sources,
-        )
-        distribution_consumption_by_etso = (
-            {} if invoice_only_mode else load_distribution_consumption_by_etso(raw_df)
-        )
-        reconciliation_consumption_by_etso = load_reconciliation_consumption_from_output(
-            output_bytes,
-            invoice_sources,
+        production_by_etso = load_cached_ges_production_by_etso(file_path)
+        (
+            invoice_consumption_by_etso,
+            distribution_consumption_by_etso,
             reconciliation_consumption_by_etso,
-        )
-        customer_name_by_etso = load_customer_name_by_etso(
+            customer_name_by_etso,
+            meter_id_by_etso,
+            company_by_etso,
+        ) = load_ges_comparison_source_maps(
             raw_df,
             output_bytes,
             invoice_sources,
+            invoice_only_mode=invoice_only_mode,
+            reconciliation_source_values=reconciliation_consumption_by_etso,
         )
     except (OSError, ValueError, zipfile.BadZipFile, KeyError) as error:
         st.error(f"GES t\u00fcketim kar\u015f\u0131la\u015ft\u0131rma raporu olu\u015fturulamad\u0131: {error}")
@@ -3771,6 +3985,8 @@ def render_ges_consumption_difference_report_area(
         distribution_consumption_by_etso,
         reconciliation_consumption_by_etso,
         customer_name_by_etso,
+        meter_id_by_etso,
+        company_by_etso,
     )
     st.markdown("#### ETSO Bazl\u0131 T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131")
     st.caption(
@@ -4383,7 +4599,6 @@ def add_invoice_distribution_comparison_worksheet(
     }
 
 
-def build_company_comparison_reports(
     output_bytes: bytes | None,
     selected_companies: Iterable[str] | None = None,
     include_group_mismatches: bool = True,
@@ -6666,97 +6881,6 @@ def render_analysis_panel(
         f"Birleştirilen mükerrer kayıt: {format_turkish_integer(stats.get('merged_duplicates', 0))} | "
         f"Filtrelenen bozuk kayıt: {format_turkish_integer(stats.get('absurd_filtered', 0))}"
     )
-
-    st.markdown("#### 📊 Şirket Bazlı Karşılaştırma Raporları")
-    company_column = next(
-        (column for column in ("Dağıtım Bölgesi", "Dağıtım Şirketi") if column in raw_df.columns),
-        None,
-    )
-    company_options_by_key: dict[str, str] = {}
-    if company_column:
-        for value in raw_df[company_column].dropna().tolist():
-            company_name = str(value).strip()
-            if company_name and company_name.casefold() != "nan":
-                company_options_by_key.setdefault(_normalize_tariff_lookup_key(company_name), company_name)
-    company_options = sorted(company_options_by_key.values(), key=str.casefold)
-    if "company_report_selected_companies" in st.session_state:
-        valid_company_options = set(company_options)
-        st.session_state["company_report_selected_companies"] = [
-            company
-            for company in (st.session_state.get("company_report_selected_companies") or [])
-            if company in valid_company_options
-        ]
-    selected_company_names = st.multiselect(
-        "Raporlanacak dağıtım şirketlerini seçin",
-        options=company_options,
-        key="company_report_selected_companies",
-        placeholder="Şirket seçin",
-    )
-    selected_company_signature = tuple(
-        sorted(_normalize_tariff_lookup_key(company) for company in selected_company_names)
-    )
-    if st.session_state.get("company_report_selection") != selected_company_signature:
-        st.session_state["company_report_selection"] = selected_company_signature
-        st.session_state["company_comparison_reports"] = {}
-        st.session_state["comparison_report_warning"] = None
-        st.session_state["company_report_generated"] = False
-
-    generate_reports = st.button(
-        "Seçilen Şirketler İçin Rapor Oluştur",
-        key="build_company_comparison_reports",
-        disabled=not selected_company_names or not output_bytes or invoice_output_blocked,
-    )
-    if generate_reports:
-        try:
-            with st.spinner("Seçilen şirketlerin karşılaştırma raporları hazırlanıyor."):
-                company_reports, _, comparison_report_warning = (
-                    build_company_comparison_reports(
-                        output_bytes,
-                        selected_company_names,
-                        include_group_mismatches=False,
-                    )
-                )
-            st.session_state["company_comparison_reports"] = company_reports
-            st.session_state["comparison_report_warning"] = comparison_report_warning
-            st.session_state["company_report_generated"] = True
-        except Exception as error:
-            st.session_state["company_comparison_reports"] = {}
-            st.session_state["comparison_report_warning"] = (
-                "Şirket bazlı karşılaştırma raporları hazırlanamadı: "
-                f"{type(error).__name__}: {error}"
-            )
-            st.session_state["company_report_generated"] = True
-
-    generated_for_selection = (
-        st.session_state.get("company_report_generated")
-        and st.session_state.get("company_report_selection") == selected_company_signature
-    )
-    company_reports = st.session_state.get("company_comparison_reports") or {}
-    if st.session_state.get("comparison_report_warning"):
-        st.warning(st.session_state["comparison_report_warning"])
-    elif generated_for_selection and company_reports:
-        st.caption("Seçtiğiniz şirketlerin her birini ayrı Excel raporu olarak indirebilirsiniz.")
-        report_items = sorted(company_reports.items(), key=lambda item: item[0].casefold())
-        for start_index in range(0, len(report_items), 3):
-            report_row = report_items[start_index : start_index + 3]
-            report_columns = st.columns(len(report_row), gap="small")
-            for offset, (column, (company_name, report_bytes)) in enumerate(zip(report_columns, report_row)):
-                safe_company_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", company_name).strip(" .")
-                safe_company_name = safe_company_name or "Dağıtım Şirketi"
-                with column:
-                    st.download_button(
-                        company_name,
-                        data=report_bytes,
-                        file_name=f"{safe_company_name} - Karşılaştırma.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=f"company_comparison_download_{start_index + offset}",
-                        width="stretch",
-                        on_click="ignore",
-                    )
-    elif generated_for_selection:
-        st.info("Seçtiğiniz şirketler için karşılaştırma kaydı bulunamadı.")
-    else:
-        st.caption("İstediğiniz şirketleri seçip rapor düğmesine basın; diğer şirketler bu işlemde çalıştırılmaz.")
 
     st.markdown("#### Abone Grubu Farkları")
     group_mismatches = st.session_state.get("subscription_group_mismatches") or []
