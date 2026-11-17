@@ -3665,9 +3665,7 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
     distribution_header = "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)"
     reconciliation_header = "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)"
     header_fill = PatternFill(fill_type="solid", fgColor="305496")
-    difference_zero_fill = PatternFill(fill_type="solid", fgColor="E2F0D9")
-    difference_nonzero_fill = PatternFill(fill_type="solid", fgColor="FCE4D6")
-    difference_missing_fill = PatternFill(fill_type="solid", fgColor="E7E6E6")
+    difference_range_fill = PatternFill(fill_type="solid", fgColor="FFF2CC")
 
     workbook = Workbook()
     workbook.calculation.fullCalcOnLoad = True
@@ -3694,15 +3692,11 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
                     f'=IF(COUNT({distribution_column}{row_index}:{reconciliation_column}{row_index})=2,'
                     f'{distribution_column}{row_index}-{reconciliation_column}{row_index},"-")'
                 )
-                if distribution_value is None or reconciliation_value is None:
-                    cell.fill = difference_missing_fill
-                else:
+                cell.fill = PatternFill(fill_type=None)
+                if distribution_value is not None and reconciliation_value is not None:
                     difference = distribution_value - reconciliation_value
-                    cell.fill = (
-                        difference_zero_fill
-                        if abs(difference) <= 1e-9
-                        else difference_nonzero_fill
-                    )
+                    if -10 <= difference <= 10:
+                        cell.fill = difference_range_fill
                 cell.number_format = '#,##0.00;[Red]-#,##0.00;0.00'
                 cell.alignment = Alignment(vertical="center")
                 continue
@@ -3723,11 +3717,7 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
 
     legend_row = len(rows) + 3
     worksheet.cell(legend_row, 1, "Renk a\u00e7\u0131klamas\u0131").font = Font(bold=True)
-    for column, label, fill in (
-        (2, "Fark = 0", difference_zero_fill),
-        (3, "Fark \u2260 0", difference_nonzero_fill),
-        (4, "Kaynak verisi eksik", difference_missing_fill),
-    ):
+    for column, label, fill in ((2, "Fark -10 ile +10 kWh (dahil)", difference_range_fill),):
         cell = worksheet.cell(legend_row, column, label)
         cell.fill = fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -3788,7 +3778,8 @@ def render_ges_consumption_difference_report_area(
         "Fatura, da\u011f\u0131t\u0131m, uzla\u015ft\u0131rma ve GES miktarlar\u0131 say\u0131 olarak saklan\u0131r "
         "ve virg\u00fcl bi\u00e7iminde g\u00f6sterilir; GES verisi olmayan ETSO'larda 0 kullan\u0131l\u0131r. "
         "Tek fark, Excel form\u00fcl\u00fcyle Da\u011f\u0131t\u0131m eksi Uzla\u015ft\u0131rma olarak hesaplan\u0131r. "
-        "Renkler yaln\u0131zca bu fark\u0131 belirtir."
+        "Yaln\u0131zca -10 ile +10 kWh (dahil) aras\u0131ndaki fark h\u00fccreleri a\u00e7\u0131k sar\u0131d\u0131r; "
+        "Excel'de fark s\u00fctunundan Renge G\u00f6re Filtrele se\u00e7ene\u011fini kullanabilirsiniz."
     )
     st.download_button(
         f"ETSO Bazl\u0131 T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131n\u0131 \u0130ndir ({format_turkish_integer(len(rows))} ETSO)",
