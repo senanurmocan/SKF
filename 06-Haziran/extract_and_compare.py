@@ -2052,6 +2052,10 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
             resolved = False
             for cf_folder, real_folder_name in actual_folders.items():
                 canonical = merged_folder_lookup.get(cf_folder)
+                # Aynı bölge adı yalnızca harf büyüklüğüyle farklı yazılmışsa
+                # alias tablosunda ayrıca kayıt gerektirmeden eşleştir.
+                if canonical is None and cf_folder == region.casefold():
+                    canonical = region
                 if canonical and canonical.casefold() == region.casefold():
                     region_path = os.path.join(active_base_path, real_folder_name)
                     print(f"  [DİNAMİK] Klasör '{real_folder_name}' → bölge '{region}' olarak eşleştirildi")
