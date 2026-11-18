@@ -100,6 +100,7 @@ EXPECTED_REGION_COUNT = 21
 ANOMALY_MINIMUM_TL = 10_000_000.0
 ABSURD_CORRUPTION_THRESHOLD_TL = 50_000_000_000.0
 OUR_INVOICES_LABEL = "Bizim Kestiğimiz Faturalar"
+INVOICE_UPLOAD_LABEL = "Kesilen Faturalar"
 FEE_DIFFERENCE_TEMPLATE = BASE_DIR / "FaturaDigerEkKalemBedelAktarim_2026_11_10_17_51.xlsx"
 
 
@@ -595,7 +596,7 @@ def inject_corporate_css() -> None:
             content: "📁 Dağıtım Şirketi SKF";
         }
         .st-key-browser_upload_shell_invoice [data-testid="stFileUploaderDropzone"] button::after {
-            content: "📄 Bizim Kestiğimiz Faturalar";
+            content: "📄 Kesilen Faturalar";
         }
         .st-key-browser_upload_shell_reconciliation [data-testid="stFileUploaderDropzone"] button::after {
             content: "⚖️ Uzlaştırma Tüketim";
@@ -6434,7 +6435,7 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         st.session_state["browser_distribution_label"] = "SKF"
 
     invoice_file = render_browser_excel_picker(
-        "📄 Bizim Kestiğimiz Faturalar",
+        "📄 Kesilen Faturalar",
         category="invoice",
         selected_key="selected_invoice_file",
         container=st.sidebar,
@@ -6480,7 +6481,7 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
     invoice_button, invoice_status = st.sidebar.columns([9, 1], gap="small", vertical_alignment="center")
     with invoice_button:
         select_invoice = st.button(
-            "📄 Bizim Kestiğimiz Faturalar",
+            "📄 Kesilen Faturalar",
             width="stretch",
             key="select_our_invoice_file",
         )
@@ -6490,7 +6491,7 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
 
     if select_invoice:
         selected_file = select_excel_file_via_dialog(
-            "Bizim Kestiğimiz Faturalar için Excel dosyasını seçin"
+            f"{INVOICE_UPLOAD_LABEL} i\u00e7in Excel dosyas\u0131n\u0131 se\u00e7in"
         )
         if selected_file:
             st.session_state["selected_invoice_file"] = selected_file
@@ -6551,7 +6552,7 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             placeholder="",
         ).strip()
         invoice_file = st.text_input(
-            "Bizim Kestiğimiz Faturalar Excel dosyası",
+            f"{INVOICE_UPLOAD_LABEL} Excel dosyas\u0131",
             key="manual_selected_invoice_file",
             type="password",
             placeholder="",
@@ -6669,7 +6670,7 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         help="Se\u00e7ili da\u011f\u0131t\u0131m klas\u00f6r\u00fc bu i\u015flemde kullan\u0131lmaz; yaln\u0131zca fatura verisi haz\u0131rlan\u0131r.",
     )
     if invoice_file and not valid_invoice_file and not only_distribution_data:
-        st.sidebar.error("Seçilen Bizim Kestiğimiz Faturalar Excel dosyası bulunamadı.")
+        st.sidebar.error(f"{INVOICE_UPLOAD_LABEL} i\u00e7in se\u00e7ilen Excel dosyas\u0131 bulunamad\u0131.")
     invoice_only_mode = (
         not only_distribution_data
         and (only_our_invoice_data or not root_folder)
@@ -7027,13 +7028,13 @@ def render_analysis_panel(
         not distribution_only_mode and not valid_root and invoice_file and valid_invoice_file
     )
     if not root_folder and invoice_file and valid_invoice_file:
-        st.info("Da\u011f\u0131t\u0131m klas\u00f6r\u00fc y\u00fcklenmeden yaln\u0131zca Bizim Kesti\u011fimiz Faturalar verisi haz\u0131rlanabilir.")
+        st.info(f"Da\u011f\u0131t\u0131m klas\u00f6r\u00fc y\u00fcklenmeden yaln\u0131zca {INVOICE_UPLOAD_LABEL} verisi haz\u0131rlanabilir.")
     elif not root_folder:
         st.info("Analize başlamak için soldan dosyaları yükleyin.")
     elif not valid_root:
         st.error("Seçilen Dağıtım Şirketi SKF klasörü bulunamadı.")
     if invoice_file and not valid_invoice_file:
-        st.error("Seçilen Bizim Kestiğimiz Faturalar Excel dosyası bulunamadı.")
+        st.error(f"{INVOICE_UPLOAD_LABEL} i\u00e7in se\u00e7ilen Excel dosyas\u0131 bulunamad\u0131.")
     if selected_eno_file and not valid_eno_file:
         st.error("Seçilen Kesin Liste Excel dosyası bulunamadı; dosya yolunu kontrol edin.")
     if not valid_mapping:
@@ -7190,7 +7191,7 @@ def render_analysis_panel(
         return
     if stats.get("invoice_only_mode"):
         for invoice_error in stats.get("invoice_file_errors", []):
-            st.error(f"{OUR_INVOICES_LABEL}: {invoice_error}")
+            st.error(f"{INVOICE_UPLOAD_LABEL}: {invoice_error}")
         if invoice_output_blocked:
             st.info("Se\u00e7ilen fatura dosyas\u0131ndan Bizim Kesti\u011fimiz 2 sayfas\u0131 olu\u015fturulamad\u0131.")
         has_reconciliation_consumption = any(
@@ -7206,11 +7207,11 @@ def render_analysis_panel(
         else:
             st.info("\u00c7\u0131kt\u0131da y\u00fcklenen fatura verisi ve ETSO bazl\u0131 Bizim Kesti\u011fimiz 2 sayfas\u0131 bulunur; da\u011f\u0131t\u0131m kar\u015f\u0131la\u015ft\u0131rmas\u0131 yap\u0131lmad\u0131.")
         if output_bytes and not invoice_output_blocked:
-            invoice_stem = Path(invoice_file).stem if invoice_file else "Bizim Kesti\u011fimiz"
+            invoice_stem = Path(invoice_file).stem if invoice_file else INVOICE_UPLOAD_LABEL
             st.download_button(
-                "Bizim Kesti\u011fimiz dosyas\u0131n\u0131 indir",
+                f"{INVOICE_UPLOAD_LABEL} dosyas\u0131n\u0131 indir",
                 data=output_bytes,
-                file_name=f"{invoice_stem} - Bizim Kesti\u011fimiz.xlsx",
+                file_name=f"{invoice_stem} - {INVOICE_UPLOAD_LABEL}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="invoice_only_output_download",
                 width="stretch",
@@ -7248,7 +7249,7 @@ def render_analysis_panel(
                 st.code(log_line, language=None)
         return
     for invoice_error in stats.get("invoice_file_errors", []):
-        st.error(f"{OUR_INVOICES_LABEL}: {invoice_error}")
+        st.error(f"{INVOICE_UPLOAD_LABEL}: {invoice_error}")
     if invoice_output_blocked:
         st.info("Seçilen fatura dosyası SKF çıktısına eklenemediği için indirme kapatıldı.")
 
@@ -7367,7 +7368,7 @@ def render_analysis_panel(
     )
 
     if invoice_sources:
-        st.markdown(f"#### {OUR_INVOICES_LABEL}")
+        st.markdown(f"#### {INVOICE_UPLOAD_LABEL}")
         st.caption(
             f"{len(invoice_sources)} sayfa çıktı dosyasına eklendi; her sayfa için "
             "Bizim Kestiğimiz 2 karşılaştırma sekmesi oluşturuldu."
