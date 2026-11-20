@@ -749,6 +749,83 @@ def inject_corporate_css() -> None:
             border: 1px solid var(--ck-border);
             border-radius: 10px;
         }
+        .st-key-consumption_comparison_card,
+        .st-key-other_fee_transfer_card {
+            box-sizing: border-box;
+            width: 100%;
+            margin: .55rem 0 .9rem;
+            padding: .65rem .85rem;
+            border: 1px solid var(--ck-border);
+            border-radius: 15px;
+            background: var(--ck-surface);
+            box-shadow: 0 5px 16px rgba(39, 55, 77, 0.08);
+            transition: box-shadow 150ms ease, transform 150ms ease;
+        }
+        .st-key-consumption_comparison_card {
+            border-left: 5px solid #305496;
+        }
+        .st-key-other_fee_transfer_card {
+            border-left: 5px solid #ED7D31;
+        }
+        .st-key-consumption_comparison_card:hover,
+        .st-key-other_fee_transfer_card:hover {
+            box-shadow: 0 8px 20px rgba(39, 55, 77, 0.13);
+            transform: translateY(-1px);
+        }
+        .st-key-consumption_comparison_card h4,
+        .st-key-other_fee_transfer_card h4 {
+            margin: 0 0 .35rem;
+            color: var(--ck-text);
+            letter-spacing: -.015em;
+        }
+        .st-key-consumption_comparison_card [data-testid="stCaptionContainer"],
+        .st-key-other_fee_transfer_card [data-testid="stCaptionContainer"] {
+            font-size: .86rem;
+            line-height: 1.5;
+        }
+        .st-key-consumption_comparison_card div.stDownloadButton > button,
+        .st-key-other_fee_transfer_card div.stDownloadButton > button {
+            min-height: 3rem;
+            border-radius: 11px;
+            box-shadow: 0 2px 5px rgba(39, 55, 77, 0.12);
+        }
+        .st-key-other_fee_transfer_card div.stDownloadButton > button {
+            background: #ED7D31;
+            border-color: #ED7D31;
+        }
+        .st-key-other_fee_transfer_card div.stDownloadButton > button:hover {
+            background: #D96A20;
+            border-color: #D96A20;
+        }
+        .st-key-format_warning_panel [data-testid="stExpander"],
+        .st-key-category_validation_panel [data-testid="stExpander"] {
+            overflow: hidden;
+            border-radius: 14px !important;
+            box-shadow: 0 4px 14px rgba(39, 55, 77, 0.09);
+            transition: box-shadow 140ms ease, transform 140ms ease;
+        }
+        .st-key-format_warning_panel [data-testid="stExpander"] {
+            border: 1px solid rgba(237, 125, 49, 0.32) !important;
+            border-left: 5px solid #ED7D31 !important;
+        }
+        .st-key-category_validation_panel [data-testid="stExpander"] {
+            border: 1px solid rgba(48, 84, 150, 0.28) !important;
+            border-left: 5px solid #5279B8 !important;
+        }
+        .st-key-format_warning_panel [data-testid="stExpander"]:hover,
+        .st-key-category_validation_panel [data-testid="stExpander"]:hover {
+            box-shadow: 0 7px 18px rgba(39, 55, 77, 0.14);
+            transform: translateY(-1px);
+        }
+        .st-key-format_warning_panel [data-testid="stExpander"] summary,
+        .st-key-category_validation_panel [data-testid="stExpander"] summary {
+            padding: 0.85rem 1rem;
+        }
+        .st-key-format_warning_panel [data-testid="stExpander"] summary p,
+        .st-key-category_validation_panel [data-testid="stExpander"] summary p {
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
         @media (max-width: 760px) {
             [data-testid="stMainBlockContainer"] { padding: 1.35rem 1rem 2rem; }
             .ck-title { font-size: 1.6rem; }
@@ -4099,8 +4176,8 @@ def build_ges_consumption_difference_rows(
             "Saya\u00e7 ID": meter_id_by_etso.get(code),
             "ETSO": code,
             "M\u00fc\u015fteri Ad\u0131": customer_name_by_etso.get(code),
-            "Bizim Kesti\u011fimiz Tarife Grubu": tariff_group_by_etso.get(code),
-            "Bizim Kesti\u011fimiz T\u00fcketim (kWh)": invoice_consumption_by_etso.get(code),
+            "Tarife Grubu": tariff_group_by_etso.get(code),
+            "D\u00fczenlenen Fatura T\u00fcketimi (kWh)": invoice_consumption_by_etso.get(code),
             "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)": distribution,
             "_Da\u011f\u0131t\u0131m T\u00fcketimi Eksik": distribution is None,
             "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)": reconciliation_consumption_by_etso.get(code),
@@ -4119,12 +4196,14 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
         "Saya\u00e7 ID",
         "ETSO",
         "M\u00fc\u015fteri Ad\u0131",
-        "Bizim Kesti\u011fimiz Tarife Grubu",
-        "Bizim Kesti\u011fimiz T\u00fcketim (kWh)",
+        "Tarife Grubu",
+        "D\u00fczenlenen Fatura T\u00fcketimi (kWh)",
         "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)",
         "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)",
+        "Uzla\u015ft\u0131rma - Da\u011f\u0131t\u0131m Fark\u0131 (kWh)",
         "GES \u00dcretimi (kWh)",
-        "Da\u011f\u0131t\u0131m - Uzla\u015ft\u0131rma Fark\u0131 (kWh)",
+        "Kalan Fark (kWh)",
+        "A\u00e7\u0131klama",
     ]
     distribution_header = "Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi T\u00fcketim (kWh)"
     reconciliation_header = "Uzla\u015ft\u0131rma T\u00fcketimi (kWh)"
@@ -4141,21 +4220,26 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
     worksheet = workbook.active
     worksheet.title = "ETSO T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131"
     for column, header in enumerate(headers, start=1):
-        cell = worksheet.cell(1, column, header)
+        cell = worksheet.cell(2, column, header)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     distribution_column = get_column_letter(headers.index(distribution_header) + 1)
     reconciliation_column = get_column_letter(headers.index(reconciliation_header) + 1)
+    difference_header = "Uzla\u015ft\u0131rma - Da\u011f\u0131t\u0131m Fark\u0131 (kWh)"
+    difference_column = get_column_letter(headers.index(difference_header) + 1)
+    production_column = get_column_letter(headers.index("GES \u00dcretimi (kWh)") + 1)
     distribution_column_index = headers.index(distribution_header) + 1
     numeric_columns = {
-        headers.index("Bizim Kesti\u011fimiz T\u00fcketim (kWh)") + 1,
+        headers.index("D\u00fczenlenen Fatura T\u00fcketimi (kWh)") + 1,
         distribution_column_index,
         headers.index(reconciliation_header) + 1,
         headers.index("GES \u00dcretimi (kWh)") + 1,
+        headers.index(difference_header) + 1,
+        headers.index("Kalan Fark (kWh)") + 1,
     }
-    for row_index, row in enumerate(rows, start=2):
+    for row_index, row in enumerate(rows, start=3):
         distribution_missing = bool(row.get("_Da\u011f\u0131t\u0131m T\u00fcketimi Eksik"))
         distribution_value = row.get(distribution_header)
         if distribution_missing:
@@ -4163,41 +4247,58 @@ def build_ges_consumption_difference_report(rows: list[dict[str, Any]]) -> bytes
         reconciliation_value = row.get(reconciliation_header)
         for column, header in enumerate(headers, start=1):
             cell = worksheet.cell(row_index, column)
-            if column == len(headers):
-                cell.fill = PatternFill(fill_type=None)
-                if distribution_value is None or reconciliation_value is None:
-                    cell.value = "-"
-                else:
-                    cell.value = f"={distribution_column}{row_index}-{reconciliation_column}{row_index}"
-                    difference = distribution_value - reconciliation_value
-                    if -10 <= difference <= 10:
-                        cell.fill = difference_range_fill
-                cell.number_format = numeric_format
-                cell.alignment = Alignment(vertical="center")
-                continue
-
             value = row.get(header)
             if column == distribution_column_index and distribution_missing:
                 value = 0
-            cell.value = value if value is not None else "-"
             cell.alignment = Alignment(vertical="center")
-            if column in numeric_columns and value is not None:
+            if header == difference_header:
+                cell.value = (
+                    f'=IF(AND(ISNUMBER({reconciliation_column}{row_index}),'
+                    f'ISNUMBER({distribution_column}{row_index})),'
+                    f'{reconciliation_column}{row_index}-{distribution_column}{row_index},"-")'
+                )
+                if distribution_value is not None and reconciliation_value is not None:
+                    difference = reconciliation_value - distribution_value
+                    if -10 <= difference <= 10:
+                        cell.fill = difference_range_fill
+            elif header == "Kalan Fark (kWh)":
+                cell.value = (
+                    f'=IF(AND(ISNUMBER({difference_column}{row_index}),'
+                    f'ISNUMBER({production_column}{row_index})),'
+                    f'{difference_column}{row_index}-{production_column}{row_index},"-")'
+                )
+            elif header == "A\u00e7\u0131klama":
+                cell.value = (
+                    "Uzla\u015ft\u0131rma t\u00fcketimi yok"
+                    if reconciliation_value is None else ""
+                )
+            else:
+                cell.value = value if value is not None else "-"
+            if column in numeric_columns:
                 cell.number_format = numeric_format
             if column == distribution_column_index and distribution_missing:
                 cell.font = missing_distribution_font
 
-    worksheet.freeze_panes = "D2"
-    worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(rows) + 1)}"
-    worksheet.row_dimensions[1].height = 42
-    for column, width in enumerate([26, 22, 24, 38, 28, 30, 34, 28, 24, 38], start=1):
+    worksheet.freeze_panes = "F3"
+    worksheet.auto_filter.ref = f"A2:{get_column_letter(len(headers))}{max(2, len(rows) + 2)}"
+    worksheet.row_dimensions[1].height = 30
+    worksheet.row_dimensions[2].height = 42
+    for column, width in enumerate([19, 15, 18, 30, 18, 22, 24, 22, 25, 19, 19, 28], start=1):
         worksheet.column_dimensions[get_column_letter(column)].width = width
 
-    legend_row = len(rows) + 3
-    worksheet.cell(legend_row, 1, "Renk a\u00e7\u0131klamas\u0131").font = Font(bold=True)
-    for column, label, fill in ((2, "Fark -10 ile +10 kWh (dahil)", difference_range_fill),):
-        cell = worksheet.cell(legend_row, column, label)
-        cell.fill = fill
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+    worksheet.cell(1, 1, "Renk a\u00e7\u0131klamas\u0131").font = Font(bold=True)
+    range_legend = worksheet.cell(1, 2, "Sar\u0131 dolgu: Fark -10 ile +10 kWh (dahil)")
+    range_legend.fill = difference_range_fill
+    range_legend.alignment = Alignment(vertical="center", wrap_text=True)
+    missing_legend = worksheet.cell(
+        1,
+        7,
+        "K\u0131rm\u0131z\u0131 yaz\u0131: Da\u011f\u0131t\u0131m taraf\u0131ndan iletilmedi",
+    )
+    missing_legend.font = missing_distribution_font
+    missing_legend.alignment = Alignment(vertical="center", wrap_text=True)
+    worksheet.merge_cells("B1:F1")
+    worksheet.merge_cells("G1:L1")
 
     buffer = io.BytesIO()
     workbook.save(buffer)
@@ -4234,12 +4335,6 @@ def render_ges_consumption_difference_report_area(
         st.session_state["consumption_report_bytes"] = None
         st.session_state["consumption_report_error"] = None
 
-    st.markdown("#### Da\u011f\u0131t\u0131m Uzla\u015ft\u0131rma T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131")
-    st.caption(
-        "T\u00fcketim kar\u015f\u0131la\u015ft\u0131rma Excel'i analiz tamamlan\u0131rken haz\u0131rlan\u0131r. "
-        "GES dosyas\u0131 iste\u011fe ba\u011fl\u0131d\u0131r; se\u00e7ilmezse GES miktar\u0131 0 al\u0131n\u0131r. "
-        "Fark Da\u011f\u0131t\u0131m eksi Uzla\u015ft\u0131rma olarak hesaplan\u0131r."
-    )
     if (
         not st.session_state.get("consumption_report_bytes")
         and not st.session_state.get("consumption_report_error")
@@ -4320,18 +4415,31 @@ def render_ges_consumption_difference_report_area(
             st.session_state["consumption_report_bytes"] = None
             st.session_state["consumption_report_error"] = str(error)
 
-    if error_message := st.session_state.get("consumption_report_error"):
-        st.error(f"T\u00fcketim kar\u015f\u0131la\u015ft\u0131rmas\u0131 haz\u0131rlanamad\u0131: {error_message}")
-    if report_bytes := st.session_state.get("consumption_report_bytes"):
-        st.download_button(
-            "T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rma Excel'ini \u0130ndir",
-            data=report_bytes,
-            file_name="ETSO_Tuketim_Karsilastirmasi.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_ges_consumption_difference_report",
-            width="stretch",
-            on_click="ignore",
-        )
+    error_message = st.session_state.get("consumption_report_error")
+    report_bytes = st.session_state.get("consumption_report_bytes")
+    with st.container(key="consumption_comparison_card"):
+        title_column, action_column = st.columns([2.2, 1], gap="large", vertical_alignment="center")
+        with title_column:
+            st.markdown("#### \U0001f4ca Da\u011f\u0131t\u0131m Uzla\u015ft\u0131rma T\u00fcketim Kar\u015f\u0131la\u015ft\u0131rmas\u0131")
+            st.caption(
+                "T\u00fcketim kar\u015f\u0131la\u015ft\u0131rma Excel'i analiz tamamlan\u0131rken haz\u0131rlan\u0131r. "
+                "GES dosyas\u0131 iste\u011fe ba\u011fl\u0131d\u0131r; se\u00e7ilmezse GES miktar\u0131 0 al\u0131n\u0131r. "
+                "Uzla\u015ft\u0131rma - Da\u011f\u0131t\u0131m fark\u0131 hesaplan\u0131r; Kalan Fark bu de\u011ferden GES \u00fcretimi \u00e7\u0131kar\u0131larak bulunur."
+            )
+            if error_message:
+                st.error(f"T\u00fcketim kar\u015f\u0131la\u015ft\u0131rmas\u0131 haz\u0131rlanamad\u0131: {error_message}")
+        with action_column:
+            if report_bytes:
+                st.download_button(
+                    "T\u00fcketim Excel'ini \u0130ndir",
+                    data=report_bytes,
+                    file_name="ETSO_Tuketim_Karsilastirmasi.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_ges_consumption_difference_report",
+                    width="stretch",
+                    on_click="ignore",
+                )
+
 
 def render_reconciliation_difference_report_area(
     invoice_sources: list[dict[str, Any]],
@@ -4392,13 +4500,6 @@ def render_fee_difference_transfer_area(
     if not output_bytes:
         return
 
-    st.markdown("#### Di\u011fer Bedel Tablosu")
-    st.caption(
-        "Yaln\u0131zca ETSO e\u015fle\u015fen kay\u0131tlar aktar\u0131l\u0131r. Da\u011f\u0131t\u0131m, g\u00fc\u00e7 ve g\u00fc\u00e7 a\u015f\u0131m bedellerinde "
-        "-10 ile +10 TL (dahil) aras\u0131ndaki farklar; reaktif bedelde 0 TL fark aktar\u0131lmaz. "
-        "Tutar, da\u011f\u0131t\u0131m bedeli eksi bizim bedelimiz olarak yaz\u0131l\u0131r. "
-        "Tablo analiz tamamlan\u0131rken haz\u0131rlan\u0131r."
-    )
     current_signature = invoice_report_input_signature(
         invoice_file,
         mapping_path,
@@ -4418,9 +4519,11 @@ def render_fee_difference_transfer_area(
         (invoice_only_mode and has_invoice_comparison)
         or (invoice_file and os.path.isfile(invoice_file))
     )
-    if not can_prepare:
-        st.info("Di\u011fer bedel tablosu i\u00e7in Bizim Kesti\u011fimiz Faturalar dosyas\u0131n\u0131 se\u00e7in.")
-    elif (
+    preparation_message = (
+        "Di\u011fer bedel tablosu i\u00e7in Bizim Kesti\u011fimiz Faturalar dosyas\u0131n\u0131 se\u00e7in."
+        if not can_prepare else None
+    )
+    if can_prepare and (
         not st.session_state.get("fee_difference_transfer_bytes")
         and not st.session_state.get("fee_difference_transfer_error")
     ):
@@ -4459,30 +4562,87 @@ def render_fee_difference_transfer_area(
             )
 
     transfer_error = st.session_state.get("fee_difference_transfer_error")
-    if transfer_error:
-        st.warning(transfer_error)
-        return
-
     transfer_bytes = st.session_state.get("fee_difference_transfer_bytes")
     transfer_stats = st.session_state.get("fee_difference_transfer_stats") or {}
     exported_rows = int(transfer_stats.get("exported_rows", 0))
-    if transfer_bytes:
-        st.download_button(
-            f"Ek Kalem Bedel Farklar\u0131n\u0131 \u0130ndir ({format_turkish_integer(exported_rows)} sat\u0131r)",
-            data=transfer_bytes,
-            file_name="FaturaDigerEkKalemBedelAktarim.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="fee_difference_transfer_download",
-            width="stretch",
-            on_click="ignore",
-        )
-    if transfer_bytes and exported_rows == 0:
-        st.info("Aktar\u0131m kurallar\u0131na uyan ve Saya\u00e7 ID bilgisi bulunan bedel fark\u0131 yok.")
     skipped_missing_meter_id = int(transfer_stats.get("skipped_missing_meter_id", 0))
-    if transfer_bytes and skipped_missing_meter_id:
-        st.warning(
-            f"{format_turkish_integer(skipped_missing_meter_id)} kay\u0131t Saya\u00e7 ID bulunmad\u0131\u011f\u0131 i\u00e7in atland\u0131."
-        )
+    with st.container(key="other_fee_transfer_card"):
+        title_column, action_column = st.columns([2.2, 1], gap="large", vertical_alignment="center")
+        with title_column:
+            st.markdown("#### \U0001f4c4 Di\u011fer Bedel Tablosu")
+            st.caption("Bu tablo, bir sonraki fatura i\u00e7in sisteme at\u0131lacak de\u011ferleri g\u00f6sterir.")
+            if preparation_message:
+                st.info(preparation_message)
+            if transfer_error:
+                st.warning(transfer_error)
+            elif transfer_bytes and exported_rows == 0:
+                st.info("Aktar\u0131m kurallar\u0131na uyan ve Saya\u00e7 ID bilgisi bulunan bedel fark\u0131 yok.")
+            if transfer_bytes and skipped_missing_meter_id:
+                st.warning(
+                    f"{format_turkish_integer(skipped_missing_meter_id)} kay\u0131t Saya\u00e7 ID bulunmad\u0131\u011f\u0131 i\u00e7in atland\u0131."
+                )
+        with action_column:
+            if transfer_bytes and not transfer_error:
+                st.download_button(
+                    f"De\u011ferleri \u0130ndir ({format_turkish_integer(exported_rows)} sat\u0131r)",
+                    data=transfer_bytes,
+                    file_name="FaturaDigerEkKalemBedelAktarim.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="fee_difference_transfer_download",
+                    width="stretch",
+                    on_click="ignore",
+                )
+
+
+def build_distribution_missing_confirmed_invoice_report(rows: list[dict[str, Any]]) -> bytes:
+    """Build an Excel report that preserves complete ETSO codes as text."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    headers = [
+        "Da\u011f\u0131t\u0131m B\u00f6lgesi",
+        "ETSO Kodu",
+        "M\u00fc\u015fteri",
+        "Tarife Grubu",
+        "Aktif Enerji T\u00fcketim (kWh)",
+    ]
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Eksik Kesin Faturalar"
+    for column, header in enumerate(headers, start=1):
+        cell = worksheet.cell(1, column, header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(fill_type="solid", fgColor="305496")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    thin_gray = Side(style="thin", color="D9E1F2")
+    for row_index, row in enumerate(rows, start=2):
+        for column, header in enumerate(headers, start=1):
+            value = row.get(header)
+            cell = worksheet.cell(row_index, column)
+            if header == "ETSO Kodu" and value not in (None, ""):
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and float(value).is_integer():
+                    value = str(int(value))
+                else:
+                    value = str(value).strip()
+                cell.number_format = "@"
+            elif header == "Aktif Enerji T\u00fcketim (kWh)" and isinstance(value, (int, float)):
+                cell.number_format = '#,##0.00;[Red]-#,##0.00;0.00'
+            cell.value = value if value not in (None, "") else "-"
+            cell.alignment = Alignment(vertical="center")
+            cell.border = Border(bottom=thin_gray)
+
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(rows) + 1)}"
+    worksheet.row_dimensions[1].height = 36
+    for column, width in enumerate([24, 24, 42, 28, 27], start=1):
+        worksheet.column_dimensions[get_column_letter(column)].width = width
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+    return buffer.getvalue()
+
 
 def add_invoice_distribution_comparison_worksheet(
     report_workbook: Any,
@@ -4552,6 +4712,7 @@ def add_invoice_distribution_comparison_worksheet(
         "connection": ("Bağlantı Tipi", "AG OG"),
         "power": ("Güç kWh",),
         "energy": ("Aktif Enerji Tüketim (kWh)",),
+        "status": ("Durum", "Status"),
         "distribution_fee": ("Dağıtım Bedeli (TL)",),
         "power_fee": ("Güç Bedeli(TL)", "Güç Bedeli (TL)"),
         "power_overrun_fee": ("Güç Aşım Bedeli (TL)",),
@@ -4587,6 +4748,9 @@ def add_invoice_distribution_comparison_worksheet(
 
     comparisons: list[tuple[Any, int, dict[str, int], int, int | None]] = []
     invoice_row_count = 0
+    confirmed_etso_codes: set[str] = set()
+    invoice_status_complete = True
+    invoice_comparison_sheet_count = 0
     for sheet_name in comparison_sheet_names:
         if sheet_name not in report_workbook.sheetnames:
             continue
@@ -4596,7 +4760,11 @@ def add_invoice_distribution_comparison_worksheet(
             key: find_column(invoice_headers, *aliases)
             for key, aliases in invoice_aliases.items()
         }
-        invoice_optional = {"abone", "power"}
+        invoice_comparison_sheet_count += 1
+        status_column = invoice_column_map.get("status")
+        if status_column is None:
+            invoice_status_complete = False
+        invoice_optional = {"abone", "power", "status"}
         missing = [
             key for key, column in invoice_column_map.items()
             if column is None and key not in invoice_optional
@@ -4614,6 +4782,8 @@ def add_invoice_distribution_comparison_worksheet(
             if not code:
                 continue
             invoice_row_count += 1
+            if status_column is not None and str(invoice_sheet.cell(row_index, status_column).value or "").strip().casefold() == "kesin":
+                confirmed_etso_codes.add(code)
             customer = customer_key(invoice_sheet.cell(row_index, invoice_column_map["customer"]).value)
             matches = distribution_rows.get(code, []) if code else []
             distribution_row: int | None = None
@@ -4630,6 +4800,21 @@ def add_invoice_distribution_comparison_worksheet(
                     match_status = 2
             comparisons.append((invoice_sheet, row_index, invoice_column_map, match_status, distribution_row))
 
+    confirmed_invoice_status_available = invoice_comparison_sheet_count > 0 and invoice_status_complete
+    distribution_missing_confirmed_invoice_rows: list[dict[str, Any]] | None = None
+    if confirmed_invoice_status_available:
+        distribution_missing_confirmed_invoice_rows = []
+        for distribution_row_index in range(2, detail_sheet.max_row + 1):
+            code = etso_key(detail_sheet.cell(distribution_row_index, detail_column_map["etso"]).value)
+            if not code or code in confirmed_etso_codes:
+                continue
+            distribution_missing_confirmed_invoice_rows.append({
+                "Da\u011f\u0131t\u0131m B\u00f6lgesi": detail_sheet.cell(distribution_row_index, detail_column_map["company"]).value,
+                "ETSO Kodu": detail_sheet.cell(distribution_row_index, detail_column_map["etso"]).value,
+                "M\u00fc\u015fteri": detail_sheet.cell(distribution_row_index, detail_column_map["customer"]).value,
+                "Tarife Grubu": detail_sheet.cell(distribution_row_index, detail_column_map["tariff"]).value if detail_column_map["tariff"] is not None else "-",
+                "Aktif Enerji T\u00fcketim (kWh)": detail_sheet.cell(distribution_row_index, detail_column_map["energy"]).value,
+            })
     isk_sanayi_key = _normalize_tariff_lookup_key("\u0130SK Sanayi")
     comparisons.sort(
         key=lambda comparison: _normalize_tariff_lookup_key(
@@ -4959,6 +5144,8 @@ def add_invoice_distribution_comparison_worksheet(
         "reconciliation_ambiguous_count": ambiguous_count,
         "reconciliation_unmatched_count": invoice_row_count - matched_count - ambiguous_count,
         "subscription_group_mismatches": subscription_group_mismatches,
+        "distribution_missing_confirmed_invoice_rows": distribution_missing_confirmed_invoice_rows,
+        "confirmed_invoice_status_available": confirmed_invoice_status_available,
     }
 
 
@@ -7259,32 +7446,6 @@ def render_analysis_panel(
     if read_count != expected_count or missing_regions:
         st.warning("Şu bölgeler okunamadı: " + ", ".join(missing_regions))
 
-    source_header_warnings = stats.get("source_header_warnings", [])
-    format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
-    if format_warning_rows:
-        affected_company_count = len({row["Dağıtım Şirketi"] for row in format_warning_rows})
-        with st.expander(
-            f"⚠️ Format Farkı ({format_turkish_integer(affected_company_count)} dağıtım şirketi)",
-            expanded=False,
-        ):
-            render_format_warning_table(format_warning_rows)
-
-    category_validation_warnings = stats.get("category_validation_warnings", [])
-    if category_validation_warnings:
-        with st.expander(
-            f"⚠️ Tarife / AG-OG / Terim değer kontrolü ({format_turkish_integer(len(category_validation_warnings))} bulgu)",
-            expanded=True,
-        ):
-            st.warning(
-                "Tarife Grubu yalnız Sanayi, Ticarethane veya Mesken; AG OG yalnız AG veya OG olabilir. "
-                "Tanımlanamayan kaynak değerleri çıktıdan boş bırakıldı."
-            )
-            st.dataframe(
-                pd.DataFrame(category_validation_warnings),
-                hide_index=True,
-                use_container_width=True,
-            )
-
     metric_columns = st.columns(2)
     render_metric_card(metric_columns[0], "Toplam Kayıt", format_turkish_integer(len(raw_df)))
     render_metric_card(
@@ -7315,6 +7476,35 @@ def render_analysis_panel(
     else:
         st.caption("Abone grubu farklar\u0131n\u0131 g\u00f6rmek i\u00e7in fatura ve da\u011f\u0131t\u0131m verisi i\u00e7eren bir analiz \u00e7al\u0131\u015ft\u0131r\u0131n.")
 
+    if group_comparison_available:
+        st.markdown("#### Da\u011f\u0131t\u0131m\u0131n \u0130letti\u011fi, Fatura Kesilmemi\u015f ETSO\u2019lar")
+        gap_source = next((source for source in invoice_sources if "distribution_missing_confirmed_invoice_rows" in source), {})
+        if not gap_source.get("confirmed_invoice_status_available"):
+            st.caption("Fatura durumu alan\u0131 eksik oldu\u011fu i\u00e7in kesin fatura e\u015fle\u015ftirmesi yap\u0131lamad\u0131.")
+        else:
+            gap_rows = gap_source.get("distribution_missing_confirmed_invoice_rows") or []
+            if gap_rows:
+                gap_df = pd.DataFrame(gap_rows)
+                unique_etso_count = gap_df["ETSO Kodu"].nunique(dropna=True)
+                st.caption(f"{format_turkish_integer(unique_etso_count)} ETSO, {format_turkish_integer(len(gap_df))} adet da\u011f\u0131t\u0131m fatura kayd\u0131nda olan ETSO kesin faturalarda bulunamad\u0131.")
+                st.download_button(
+                    "A\u00e7\u0131k ETSO Kodlar\u0131n\u0131 Excel Olarak \u0130ndir",
+                    data=build_distribution_missing_confirmed_invoice_report(gap_rows),
+                    file_name="Dagitimda_Olup_Kesin_Faturalarimizda_Bulunmayan_ETSOlar.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_distribution_missing_confirmed_invoice_report",
+                    width="stretch",
+                    on_click="ignore",
+                )
+                st.dataframe(
+                    format_dataframe_for_ui(gap_df),
+                    hide_index=True,
+                    use_container_width=True,
+                    height=260,
+                )
+            else:
+                st.success("Da\u011f\u0131t\u0131m\u0131n iletti\u011fi ancak kesin faturalar\u0131m\u0131zda bulunmayan ETSO yok.")
+
     preview_title, download_column = st.columns([5, 2], gap="small", vertical_alignment="center")
     with preview_title:
         st.markdown(
@@ -7337,7 +7527,7 @@ def render_analysis_panel(
             )
     st.caption(
         "Ekrandaki ETSO kodları maskelidir. İndirilen Excel, kaynak ETSO kodlarını "
-        "değiştirmeden korur ve sütun genişliklerini içeriğe göre otomatik ayarlar."
+        "değiştirmeden korur."
     )
     display_df = format_dataframe_for_ui(raw_df)
     st.dataframe(
@@ -7373,6 +7563,40 @@ def render_analysis_panel(
             f"{len(invoice_sources)} sayfa çıktı dosyasına eklendi; her sayfa için "
             "Bizim Kestiğimiz 2 karşılaştırma sekmesi oluşturuldu."
         )
+
+    source_header_warnings = stats.get("source_header_warnings", [])
+    format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
+    category_validation_warnings = stats.get("category_validation_warnings", [])
+    if format_warning_rows or category_validation_warnings:
+        st.markdown("#### Veri Kontrolleri")
+        st.caption("Ba\u015fl\u0131k d\u00fczeni ve kategori de\u011ferleriyle ilgili bulgular.")
+
+    if format_warning_rows:
+        affected_company_count = len({row["Da\u011f\u0131t\u0131m \u015eirketi"] for row in format_warning_rows})
+        with st.container(key="format_warning_panel"):
+            with st.expander(
+                f"\u26a0\ufe0f Format Fark\u0131 ({format_turkish_integer(affected_company_count)} da\u011f\u0131t\u0131m \u015firketi)",
+                expanded=False,
+            ):
+                st.caption("Kaynak dosyalardaki ba\u015fl\u0131k d\u00fczeni beklenen yap\u0131dan farkl\u0131 olan alanlar.")
+                render_format_warning_table(format_warning_rows)
+
+    if category_validation_warnings:
+        with st.container(key="category_validation_panel"):
+            with st.expander(
+                f"\u26a0\ufe0f Tarife / AG-OG / Terim de\u011fer kontrol\u00fc ({format_turkish_integer(len(category_validation_warnings))} bulgu)",
+                expanded=True,
+            ):
+                st.caption("Tan\u0131mlanamayan kategori de\u011ferleri a\u015fa\u011f\u0131da listelenmi\u015ftir.")
+                st.warning(
+                    "Tarife Grubu yaln\u0131z Sanayi, Ticarethane veya Mesken; AG OG yaln\u0131z AG veya OG olabilir. "
+                    "Tan\u0131mlanamayan kaynak de\u011ferleri \u00e7\u0131kt\u0131dan bo\u015f b\u0131rak\u0131ld\u0131."
+                )
+                st.dataframe(
+                    pd.DataFrame(category_validation_warnings),
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
     with st.expander("📋 İşlem Logları", expanded=False):
         for log_line in st.session_state.get("processing_logs", []):
@@ -7429,8 +7653,7 @@ def main() -> None:
             unsafe_allow_html=True,
         )
         st.markdown(
-            '<div class="ck-subtitle">21 dağıtım bölgesi için dinamik veri çıkarma, '
-            'ETSO birleştirme ve kurumsal Excel raporu</div>',
+            '<div class="ck-subtitle">Fatura verisi kar\u015f\u0131la\u015ft\u0131rma ve ETSO bazl\u0131 analiz</div>',
             unsafe_allow_html=True,
         )
     with header_right:
