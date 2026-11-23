@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_SOURCE = ROOT / "06-Haziran"
 REQUIREMENTS = APP_SOURCE / "requirements.txt"
-PACKAGE_VERSION = "1.3"
+PACKAGE_VERSION = "1.3.1"
 PACKAGE_NAME = f"SKF-Yerel-Paket-{PACKAGE_VERSION}"
 _configured_output = Path(os.environ.get("SKF_PACKAGE_OUTPUT_DIR", "dist"))
 OUTPUT_DIR = (

@@ -35,8 +35,8 @@ Güvenilir yerel ağda paylaşmak için `python run_app.py --lan` kullanılabili
 `--lan-open` XSRF korumasını kapattığından yalnızca geliştirme/test içindir.
 
 Uygulama ekranında 21 EDAŞ bölge klasörünün bulunduğu ana dizini seçin. Sonuç
-Excel dosyasını arayüzdeki indirme düğmesiyle alın. Ana ekrandaki Windows paket
-indirme kartı hem yerel hem tarayıcı modunda görünür.
+Excel dosyasını arayüzdeki indirme düğmesiyle alın. Windows paketini indirme kartı
+yalnızca web sürümünde görünür; yerel Windows uygulamasında gösterilmez.
 
 ## Web ve LAN üzerinden dosya seçimi
 

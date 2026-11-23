@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "v1.3"
+APP_VERSION = "v1.3.1"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
@@ -7616,26 +7616,27 @@ def main() -> None:
     else:
         initialize_session_state()
 
-    with st.container(border=True, key="local_package_download"):
-        download_title, download_details = st.columns([3, 7], gap="large", vertical_alignment="center")
-        with download_title:
-            st.markdown("### 💻 Windows uygulamasını indir")
-            st.link_button(
-                f"Yerel paketi indir · {APP_VERSION}",
-                LOCAL_PACKAGE_DOWNLOAD_URL,
-                type="primary",
-                width="stretch",
-            )
-        with download_details:
-            st.markdown(
-                "Bölge dosyalarını bu bilgisayarda seçip birleştirmek için paketi indirin. "
-                "Dosyalarınız yerelde işlenir; uygulama Python kurulumu gerektirmez."
-            )
-            st.caption(
-                "ZIP'i çıkarın, `SKF'yi Başlat.bat` dosyasına çift tıklayın. "
-                "Paket Windows 64-bit içindir."
-            )
-    st.divider()
+    if download_only_web:
+        with st.container(border=True, key="local_package_download"):
+            download_title, download_details = st.columns([3, 7], gap="large", vertical_alignment="center")
+            with download_title:
+                st.markdown("### 💻 Windows uygulamasını indir")
+                st.link_button(
+                    f"Yerel paketi indir · {APP_VERSION}",
+                    LOCAL_PACKAGE_DOWNLOAD_URL,
+                    type="primary",
+                    width="stretch",
+                )
+            with download_details:
+                st.markdown(
+                    "Bölge dosyalarını bu bilgisayarda seçip birleştirmek için paketi indirin. "
+                    "Dosyalarınız yerelde işlenir; uygulama Python kurulumu gerektirmez."
+                )
+                st.caption(
+                    "ZIP'i çıkarın, `SKF'yi Başlat.bat` dosyasına çift tıklayın. "
+                    "Paket Windows 64-bit içindir."
+                )
+        st.divider()
 
     if download_only_web:
         st.info(
