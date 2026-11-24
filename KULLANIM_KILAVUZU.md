@@ -1,6 +1,6 @@
 # SKF Yerel Uygulama Kullanım Kılavuzu
 
-**Windows paketi v1.3.4 · İlk kez kullananlar için adım adım anlatım**
+**Windows paketi v1.3.5 · İlk kez kullananlar için adım adım anlatım**
 
 Bu kılavuz, uygulamayı internetten indirme aşamasından Excel sonucunu kaydetmeye kadar anlatır. Bilgisayara Python kurmanız gerekmez ve komut yazmanız istenmez.
 
@@ -33,9 +33,9 @@ Excel kaynak dosyaları **.xlsx**, **.xlsm** veya **.xls** biçiminde olmalıdı
 
 1. Tarayıcıda [SKF uygulama sayfasını](https://ckenerji-skf.streamlit.app/) açın.
 2. **Windows uygulamasını indir** başlığının altındaki **Yerel paketi indir** düğmesine basın.
-3. İnen dosyanın adı **SKF-Yerel-Paket-1.3.4.zip** olmalıdır. Tarayıcı dosyayı genellikle **İndirilenler** klasörüne kaydeder.
+3. İnen dosyanın adı **SKF-Yerel-Paket-1.3.5.zip** olmalıdır. Tarayıcı dosyayı genellikle **İndirilenler** klasörüne kaydeder.
 
-Sayfada daha yeni bir sürüm numarası görünüyorsa yeni sürümü indirin. Uygulama sayfası açılmazsa [GitHub'daki v1.3.4 Windows paketini](https://github.com/senanurmocan/SKF/releases/download/v1.3.4/SKF-Yerel-Paket-1.3.4.zip) kullanabilirsiniz.
+Sayfada daha yeni bir sürüm numarası görünüyorsa yeni sürümü indirin. Uygulama sayfası açılmazsa [GitHub'daki v1.3.5 Windows paketini](https://github.com/senanurmocan/SKF/releases/download/v1.3.5/SKF-Yerel-Paket-1.3.5.zip) kullanabilirsiniz.
 
 **ZIP**, dosyaları sıkıştırılmış halde bir arada tutan bir pakettir. İçindeki programı çalıştırmadan önce paketi normal klasöre çıkarmanız gerekir.
 
@@ -44,7 +44,7 @@ Sayfada daha yeni bir sürüm numarası görünüyorsa yeni sürümü indirin. U
 Bu adımlarda ZIP dosyası **İndirilenler** klasöründe kalır; çalıştıracağınız uygulama dosyaları ise **Masaüstü**ne çıkarılır.
 
 <div class="zip-flow" role="img" aria-label="ZIP dosyasına sağ tıklayın, Tümünü ayıkla'yı seçin, Gözat'tan Masaüstü içindeki SKF-Yerel klasörünü seçin ve Ayıkla'ya basın.">
-<span class="zip-flow-step"><span class="zip-flow-number">1</span><strong>ZIP'e sağ tıklayın</strong><small>İndirilenler klasöründeki SKF-Yerel-Paket-1.3.4.zip</small></span>
+<span class="zip-flow-step"><span class="zip-flow-number">1</span><strong>ZIP'e sağ tıklayın</strong><small>İndirilenler klasöründeki SKF-Yerel-Paket-1.3.5.zip</small></span>
 <span class="zip-flow-arrow" aria-hidden="true">›</span>
 <span class="zip-flow-step"><span class="zip-flow-number">2</span><strong>Tümünü ayıkla</strong><small>Açılan menüde bu seçeneğe basın</small></span>
 <span class="zip-flow-arrow" aria-hidden="true">›</span>
@@ -56,16 +56,16 @@ Bu adımlarda ZIP dosyası **İndirilenler** klasöründe kalır; çalıştırac
 1. Klavyede **Windows tuşu + R** tuşlarına birlikte basın.
 2. Açılan küçük kutuya **shell:desktop** yazıp **Enter** tuşuna basın. Masaüstü klasörü açılır.
 3. Klasörün boş bir yerine sağ tıklayın. **Yeni > Klasör** seçeneklerini seçin ve yeni klasöre **SKF-Yerel** adını verin.
-4. **İndirilenler** klasörünü açın. **SKF-Yerel-Paket-1.3.4.zip** dosyasına sağ tıklayıp **Tümünü ayıkla** seçeneğine basın.
+4. **İndirilenler** klasörünü açın. **SKF-Yerel-Paket-1.3.5.zip** dosyasına sağ tıklayıp **Tümünü ayıkla** seçeneğine basın.
 5. Açılan pencerede **Gözat** düğmesine basın. Soldaki listeden **Masaüstü**nü, ardından **SKF-Yerel** klasörünü seçin. **Klasörü Seç** düğmesine basarak bu konumu onaylayın.
 6. Ayıklama penceresine dönünce hedef konumun **Masaüstü\SKF-Yerel** olduğunu kontrol edin ve **Ayıkla** düğmesine basın.
-7. Ayıklama bitince Masaüstü'ndeki **SKF-Yerel** klasörünü açın. İçinde **SKF-Yerel-Paket-1.3.4** adlı klasörü göreceksiniz. Bir sonraki bölümde uygulamayı bu klasörden başlatacaksınız.
+7. Ayıklama bitince Masaüstü'ndeki **SKF-Yerel** klasörünü açın. İçinde **SKF-Yerel-Paket-1.3.5** adlı klasörü göreceksiniz. Bir sonraki bölümde uygulamayı bu klasörden başlatacaksınız.
 
 Bilgisayarınız Masaüstü'ne kaydetmenize izin vermiyorsa yazma izniniz bulunan başka bir konum seçin. Paketin içindeki dosyaları ayrı ayrı taşımayın veya silmeyin.
 
 ## 4. Uygulamayı açma
 
-1. **SKF-Yerel-Paket-1.3.4** klasörünü açın.
+1. **SKF-Yerel-Paket-1.3.5** klasörünü açın.
 2. **SKF'yi Başlat.vbs** dosyasına çift tıklayın.
 3. Windows güvenlik uyarısı gösterebilir. Dosya adının **SKF'yi Başlat.vbs** olduğunu ve paketi güvenilir uygulama sayfasından indirdiğinizi doğrulayın. Kaynak doğru değilse çalıştırmayın.
 4. Uygulama arka planda başlar ve hazır olduğunda Google Chrome'da açılır. Chrome açılamazsa Windows uyarısında yerel adres gösterilir. Siyah komut penceresi açılmaz; e-posta veya kullanıcı girişi istenmez.

@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "v1.3.4"
+APP_VERSION = "v1.3.5"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
@@ -5267,6 +5267,19 @@ def add_invoice_distribution_comparison_worksheet(
             ours_group_key = _normalize_tariff_lookup_key(ours_group)
             distribution_group_key = _normalize_tariff_lookup_key(distribution_group)
             if ours_group_key and distribution_group_key and ours_group_key != distribution_group_key:
+                customer = invoice_sheet.cell(invoice_row, invoice_columns["customer"]).value
+                if (
+                    is_blank(customer)
+                    or (isinstance(customer, str) and customer.strip() in {"-", "–", "—"})
+                    or (isinstance(customer, str) and customer.lstrip().startswith("="))
+                ):
+                    customer_column = detail_column_map.get("customer")
+                    if distribution_row is not None and customer_column is not None:
+                        customer = detail_sheet.cell(distribution_row, customer_column).value
+                if is_blank(customer) or (
+                    isinstance(customer, str) and customer.strip() in {"-", "–", "—"}
+                ):
+                    customer = "-"
                 subscription_group_mismatches.append(
                     {
                         "ETSO": invoice_sheet.cell(invoice_row, invoice_columns["etso"]).value or "-",
@@ -5275,6 +5288,7 @@ def add_invoice_distribution_comparison_worksheet(
                             else detail_company if detail_company_present
                             else "Bilinmeyen Dağıtım Şirketi"
                         ),
+                        "Müşteri": customer,
                         "Bizim Kestiğimiz Abone Grubu": ours_group,
                         "Dağıtımın Kestiği Abone Grubu": distribution_group,
                     }
@@ -5381,6 +5395,7 @@ def build_company_comparison_reports(
 
         company_column = find_header("Dağıtım Şirketi", "Dağıtım Bölgesi")
         etso_column = find_header("ETSO", "Etso")
+        customer_column = find_header("Müşteri", "Müşteri Adı", "Ünvan", "Ad Soyad")
         ours_group_column = find_header("Abone Grubu")
         distribution_group_column = find_header("Abone Grubu Dağıtım")
         if not all((company_column, etso_column, ours_group_column, distribution_group_column)):
@@ -5526,10 +5541,20 @@ def build_company_comparison_reports(
                     normalize_invoice_subscription_group(distribution_group)
                 )
                 if ours_key and distribution_key and ours_key != distribution_key:
+                    customer = (
+                        resolve_cell(comparison_sheet, row_index, customer_column)
+                        if customer_column is not None
+                        else "-"
+                    )
+                    if is_blank(customer) or (
+                        isinstance(customer, str) and customer.strip() in {"-", "–", "—"}
+                    ):
+                        customer = "-"
                     group_mismatches.append(
                         {
                             "ETSO": resolve_cell(comparison_sheet, row_index, etso_column),
                             "Dağıtım Şirketi": company_name or "-",
+                            "Müşteri": customer,
                             "Bizim Kestiğimiz Abone Grubu": ours_group,
                             "Dağıtımın Kestiği Abone Grubu": distribution_group,
                         }
