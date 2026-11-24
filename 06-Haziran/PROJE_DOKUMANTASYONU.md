@@ -3,15 +3,15 @@
 # PROJE DOKUMANTASYONU
 
 > [!IMPORTANT]
-> **Güncel proje kaynağı:** Bu belgenin başındaki **Güncel Proje Durumu — 10 Kasım
+> **Güncel proje kaynağı:** Bu belgenin başındaki **Güncel Proje Durumu — 24 Kasım
 > 2026** özeti ile `extract_and_compare.py` dosyasının başındaki **Üretim Teknik
 > Sözleşmesi** güncel uygulamayı açıklar. Eski tarihli bölümler geliştirme geçmişidir;
 > içlerindeki eski yol, mimari, hash ve plan ifadeleri güncel durum olarak
 > yorumlanmamalıdır.
 
-## Güncel Proje Durumu — 12 Kasım 2026
+## Güncel Proje Durumu — 24 Kasım 2026
 
-- **Sürüm ve giriş noktaları:** Uygulama sürümü `v1.3.1`; başlatıcı `run_app.py`,
+- **Sürüm ve giriş noktaları:** Uygulama sürümü `v1.3.2`; başlatıcı `run_app.py`,
   arayüz ve analiz akışı `06-Haziran/app.py`, fatura işleme ve Excel üretimi
   `06-Haziran/extract_and_compare.py` içindedir.
 - **Fatura işleme:** 21 EDAŞ bölgesinden `.xlsx`, `.xls`, `.xml` ve `.html`

@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_SOURCE = ROOT / "06-Haziran"
 REQUIREMENTS = APP_SOURCE / "requirements.txt"
-PACKAGE_VERSION = "1.3.1"
+PACKAGE_VERSION = "1.3.2"
 PACKAGE_NAME = f"SKF-Yerel-Paket-{PACKAGE_VERSION}"
 _configured_output = Path(os.environ.get("SKF_PACKAGE_OUTPUT_DIR", "dist"))
 OUTPUT_DIR = (
@@ -58,6 +58,16 @@ def check_build_environment() -> Path:
     require(sys.prefix != sys.base_prefix, "Paketleyiciyi proje .venv ortamından çalıştırın.")
     require(APP_SOURCE.is_dir(), f"Uygulama klasörü bulunamadı: {APP_SOURCE}")
     require(REQUIREMENTS.is_file(), f"Bağımlılık listesi bulunamadı: {REQUIREMENTS}")
+
+    app_source = (APP_SOURCE / "app.py").read_text(encoding="utf-8")
+    require(
+        re.search(
+            rf'(?m)^APP_VERSION = "v{re.escape(PACKAGE_VERSION)}"$',
+            app_source,
+        )
+        is not None,
+        "Uygulama ve Windows paketi sürümleri aynı olmalı.",
+    )
 
     for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines():
         requirement = line.strip()
@@ -107,7 +117,7 @@ def copy_application(destination: Path) -> None:
         source_dir = APP_SOURCE / package_dir
         target_dir = app_destination / package_dir
         for source in sorted(source_dir.rglob("*.py")):
-            if "__pycache__" in source.parts:
+            if "__pycache__" in source.parts or source.name == "analysis_database.py":
                 continue
             target = target_dir / source.relative_to(source_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
