@@ -24,7 +24,7 @@ Uygulamayı çalıştırmak için Windows 64 bit bilgisayar gerekir. Python, yö
 
 - **Tam karşılaştırma için gerekli:** Dağıtım bölgelerinin klasörlerini içeren ana klasör ve ilgili döneme ait **Bizim Kestiğimiz Faturalar** Excel dosyası.
 - **İsteğe bağlı:** **Uzlaştırma Tüketim** Excel dosyası. Tüketim karşılaştırmasını ekler. Her yeni analizde yeniden seçilir.
-- **İsteğe bağlı:** **Kesin Liste** Excel dosyası. Sayaç ve müşteri eşleşmelerini tamamlamaya yardımcı olur. Seçilmezse uygulama dağıtım klasörünün içinde arar.
+- **Kesin Liste:** Excel dosyası sayaç ve müşteri eşleşmelerini tamamlamaya yardımcı olur. Seçilmezse uygulama dağıtım klasörünün içinde arar.
 - **Sistem Kullanım Bedelleri:** Uygulama paketinde varsayılan bir dosya bulunur. Ekran uyarı vermiyorsa değiştirmeniz gerekmez.
 
 Excel kaynak dosyaları **.xlsx**, **.xlsm** veya **.xls** biçiminde olmalıdır. Dağıtım klasörünün içinde tek tek şirket veya bölge klasörleri bulunmalıdır; bu klasörlerin içindeki dosyalar uygulama tarafından taranır.
@@ -106,11 +106,12 @@ Analiz düğmesi, gerekli klasör ve dosya seçilene kadar soluk görünebilir. 
 
 ### İsteğe bağlı dosyaları ekleyin
 
-- **Uzlaştırma Tüketim:** EPIAŞ’tan işlem yapacağınız aya ait Uzlaştırma Tüketim Excel dosyasını indirin ve bu alandaki düğmeden seçin. Analizi başlattığınızda ETSO bazlı tüketim karşılaştırmasına eklenir. Dosyayı her yeni analizde yeniden seçin.
-- **GES Üretimi (isteğe bağlı):** Tedarikçi LUM bildirimi biçimindeki `.xlsx` dosyasını **GES Üretimi** düğmesine basarak seçin. Bu dosya, dağıtım ile uzlaştırma arasındaki farkın GES üretimiyle ilişkili olup olmadığını değerlendirebilmeniz için karşılaştırmaya eklenir. Üretim miktarları ETSO koduna göre eşleştirilir; GES dosyasında bulunmayan ETSO'lar sıfır gösterilir.
-- **Kesin Liste (isteğe bağlı):** EPİAŞ'ta **Serbest Tüketici İşlemleri > Sayaç Kaydı** yolunu izleyip işlem dönemine ait Kesin Liste Excel dosyasını indirin. Dosyayı bu alandaki düğmeden yükleyebilir veya dağıtım SKF ana klasörünün içine ya da alt klasörlerinden birine bırakabilirsiniz. Uygulama ana klasörü ve alt klasörleri otomatik arar. Dosya seçimi uygulama kapatılıp açıldığında hatırlanmaz.
+- **Kesin Liste:** EPİAŞ'ta **Serbest Tüketici İşlemleri > Sayaç Kaydı** yolunu izleyip işlem dönemine ait Kesin Liste Excel dosyasını indirin. Dosyayı bu alandaki düğmeden yükleyebilir veya dağıtım SKF ana klasörünün içine ya da alt klasörlerinden birine bırakabilirsiniz. Uygulama ana klasörü ve alt klasörleri otomatik arar. Dosya seçimi uygulama kapatılıp açıldığında hatırlanmaz.
 
   <img src="KULLANIM_KILAVUZU_GORSELLERI/epias_sayac_kaydi.png" alt="EPİAŞ Kesin Liste indirme yolu: Serbest Tüketici İşlemleri > Sayaç Kaydı" width="520">
+
+- **Uzlaştırma Tüketim:** EPIAŞ’tan işlem yapacağınız aya ait Uzlaştırma Tüketim Excel dosyasını indirin ve bu alandaki düğmeden seçin. Analizi başlattığınızda ETSO bazlı tüketim karşılaştırmasına eklenir. Dosyayı her yeni analizde yeniden seçin.
+- **GES Üretimi (isteğe bağlı):** Tedarikçi LUM bildirimi biçimindeki `.xlsx` dosyasını **GES Üretimi** düğmesine basarak seçin. Bu dosya, dağıtım ile uzlaştırma arasındaki farkın GES üretimiyle ilişkili olup olmadığını değerlendirebilmeniz için karşılaştırmaya eklenir. Üretim miktarları ETSO koduna göre eşleştirilir; GES dosyasında bulunmayan ETSO'lar sıfır gösterilir.
 
 ### Sistem Kullanım Bedelleri dosyasını kontrol edin
 
@@ -120,20 +121,20 @@ Uygulamanın ana bölümünde **Sistem Kullanım Bedelleri** alanı bulunur. Yan
 
 ### Dağıtım verileriyle tam karşılaştırma
 
-**Yalnızca Bizim Kestiğimiz Faturalar** kutusunu işaretlemeyin. Dağıtım ana klasörünü ve **Bizim Kestiğimiz Faturalar** dosyasını seçin. Düğmenin adı **Verileri Birleştir ve Karşılaştır** olur.
+Dağıtım ana klasörünü ve **Bizim Kestiğimiz Faturalar** dosyasını seçin. Düğmenin adı **Verileri Birleştir ve Karşılaştır** olur.
 
 ### Sadece fatura verisini hazırlama
 
-Dağıtım faturalarıyla karşılaştırma yapmadan yalnızca kendi fatura dosyanızı işlemek istiyorsanız **Yalnızca Bizim Kestiğimiz Faturalar** kutusunu işaretleyin. Dağıtım klasörü bu işlemde kullanılmaz. Düğmenin adı **Yalnızca Fatura Verisini Hazırla** olur.
+Dağıtım klasörü seçmeden yalnızca **Bizim Kestiğimiz Faturalar** dosyasını seçin. Düğmenin adı otomatik olarak **Yalnızca Fatura Verisini Hazırla** olur.
 
 ### Yalnızca dağıtım SKF'sini hazırlama
 
-Dağıtım ana klasörünü seçin ve **Yalnızca Dağıtım SKF'si** kutusunu işaretleyin. Fatura dosyası seçmeniz gerekmez. **Yalnızca Dağıtım SKF'sini Hazırla** düğmesine basın. Analiz tamamlanınca **Birleştirilmiş Dağıtım SKF Dosyasını İndir** düğmesinden 21 bölgedeki dağıtım kayıtlarının birleştirilmiş ve düzenlenmiş Excel dosyasını indirin. Eksik bölge varsa uygulama uyarı gösterir.
+Dağıtım ana klasörünü seçin ve fatura dosyası seçmeyin. Düğmenin adı otomatik olarak **Yalnızca Dağıtım SKF'sini Hazırla** olur. Analiz tamamlanınca **Birleştirilmiş Dağıtım SKF Dosyasını İndir** düğmesinden 21 bölgedeki dağıtım kayıtlarının birleştirilmiş ve düzenlenmiş Excel dosyasını indirin. Eksik bölge varsa uygulama uyarı gösterir.
 
 ## 7. Analizi çalıştırma ve sonucu indirme
 
 1. Seçtiğiniz klasör ve Excel dosyalarının doğru olduğunu kontrol edin.
-2. Tam karşılaştırma için **Verileri Birleştir ve Karşılaştır** düğmesine basın. Sadece fatura modu seçiliyse **Yalnızca Fatura Verisini Hazırla** düğmesine basın.
+2. Seçtiğiniz dosyalara uygun olarak adı değişen analiz düğmesine basın.
 3. İşlem sürerken uygulama sekmesini kapatmayın. Dosya sayısı ve bilgisayarın hızına göre işlem biraz zaman alabilir.
 4. **Analiz tamamlandı** mesajını gördüğünüzde sonuç bölümüne inin.
 5. Tam karşılaştırmanın Excel dosyası için **SKF Dosyasını İndir** düğmesine basın. Sadece fatura modunda **Bizim Kestiğimiz dosyasını indir** düğmesine basın.
@@ -161,7 +162,7 @@ Yeni sürüme geçerken önce **SKF'yi Kapat.vbs** ile çalışan uygulamayı du
 
 - **Uygulama başlatılamadı:** Hata oluşursa ayrıntı Windows uyarı penceresinde görünür. Ekran görüntüsünü kurum BT veya destek ekibine iletin; fatura ya da müşteri dosyalarını göndermeyin.
 - **Tarayıcı açılmadı:** Windows uyarısında gösterilen `localhost` adresini varsayılan tarayıcınızda açın. Uyarı yoksa **SKF'yi Başlat.vbs** dosyasına yeniden çift tıklayın. Sorun sürerse BT veya destek ekibinizden yardım alın.
-- **Analiz düğmesi soluk:** Tam karşılaştırma için dağıtım ana klasörünü ve **Bizim Kestiğimiz Faturalar** dosyasını seçin. Sadece fatura verisi hazırlayacaksanız ilgili kutuyu işaretleyin.
+- **Analiz düğmesi soluk:** Tam karşılaştırma için dağıtım ana klasörünü ve **Bizim Kestiğimiz Faturalar** dosyasını seçin. Sadece fatura verisi hazırlayacaksanız dağıtım klasörü seçmeden fatura dosyasını seçin.
 - **21'den az bölge bulundu:** Dağıtım bölgelerinin alt klasörlerini içinde tutan ana klasörü seçtiğinizden emin olun.
 - **Dosya bulunamadı uyarısı:** Dosya taşınmış veya adı değişmiş olabilir. Dosya seçme düğmesiyle geçerli dosyayı yeniden seçin.
 - **İşlem tamamlanamadı:** Doğru döneme ait dosyaları seçtiğinizi ve dosya biçiminin Excel olduğunu kontrol edin. Sorun sürerse hata mesajının ekran görüntüsünü kurum destek ekibine iletin; fatura veya müşteri dosyasını göndermeyin.

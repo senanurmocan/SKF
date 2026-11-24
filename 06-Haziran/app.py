@@ -319,6 +319,7 @@ def inject_corporate_css() -> None:
                 background-color: #252535 !important;
                 border-right: 1px solid #3A3A4A !important;
                 color: #D0D8E8 !important;
+                color-scheme: dark;
             }
             .ck-title { color: #7BA7E8 !important; }
             .ck-subtitle { color: #A0AAB8 !important; }
@@ -329,6 +330,12 @@ def inject_corporate_css() -> None:
             }
             .ck-card-label { color: #9AA3B0 !important; }
             .ck-card-value { color: #D0D8E8 !important; }
+            [data-testid="stSidebar"] .ck-selection-check {
+                background: #243B2B !important;
+                border: 1px solid #4C8054 !important;
+                color: #A9E6A1 !important;
+            }
+            a, a:visited { color: #9EC5FF !important; }
             /* Tum metin elemanlari */
             [data-testid="stMarkdown"], [data-testid="stText"],
             [data-testid="stMarkdown"] p, [data-testid="stMarkdown"] span,
@@ -382,15 +389,9 @@ def inject_corporate_css() -> None:
                 background-color: #1A1A2A !important;
                 color: #C8D0E0 !important;
             }
-            /* DataFrame ve veri onizleme */
-            [data-testid="stDataFrame"],
-            [data-testid="stDataFrame"] div,
-            [data-testid="stDataFrame"] table,
-            [data-testid="stDataFrame"] th,
-            [data-testid="stDataFrame"] td,
-            iframe[title="streamlit_dataframe"] {
-                background: #252535 !important;
-                color: #D0D8E8 !important;
+            /* Keep Streamlit's canvas-rendered dataframe theme intact. */
+            [data-testid="stDataFrame"] {
+                border-color: #3A3A4A !important;
             }
             /* Butonlar */
             div.stButton > button,
@@ -403,6 +404,49 @@ def inject_corporate_css() -> None:
             [data-testid="stSidebar"] div.stButton > button:hover {
                 background-color: #ED7D31 !important;
                 border-color: #ED7D31 !important;
+            }
+            [data-testid="stSidebar"] :is(
+                .st-key-select_eno_file,
+                .st-key-select_reconciliation_consumption_file,
+                .st-key-select_ges_production_file
+            ) div.stButton > button {
+                background: #305496 !important;
+                background-color: #305496 !important;
+                border: 1px solid #305496 !important;
+                color: #FFFFFF !important;
+                opacity: 1 !important;
+            }
+            [data-testid="stSidebar"] :is(
+                .st-key-select_eno_file,
+                .st-key-select_reconciliation_consumption_file,
+                .st-key-select_ges_production_file
+            ) div.stButton > button :is(span, p, svg) {
+                color: #FFFFFF !important;
+                fill: #FFFFFF !important;
+            }
+            [data-testid="stSidebar"] :is(
+                .st-key-select_eno_file,
+                .st-key-select_reconciliation_consumption_file,
+                .st-key-select_ges_production_file
+            ) div.stButton > button:hover {
+                background: #ED7D31 !important;
+                background-color: #ED7D31 !important;
+                border-color: #ED7D31 !important;
+            }
+            [data-testid="stSidebar"] :is(
+                .st-key-browser_upload_shell_eno,
+                .st-key-browser_upload_shell_reconciliation,
+                .st-key-browser_upload_shell_ges_production
+            ) [data-testid="stFileUploaderDropzone"] {
+                background: #305496 !important;
+                border-color: #305496 !important;
+            }
+            [data-testid="stSidebar"] :is(
+                .st-key-browser_upload_shell_eno,
+                .st-key-browser_upload_shell_reconciliation,
+                .st-key-browser_upload_shell_ges_production
+            ) [data-testid="stFileUploaderDropzone"] button::after {
+                color: #FFFFFF !important;
             }
             /* Download butonu */
             div.stDownloadButton > button {
@@ -602,7 +646,7 @@ def inject_corporate_css() -> None:
             content: "⚖️ Uzlaştırma Tüketim";
         }
         .st-key-browser_upload_shell_eno [data-testid="stFileUploaderDropzone"] button::after {
-            content: "📄 Kesin Liste (isteğe bağlı)";
+            content: "📄 Kesin Liste";
         }
         .st-key-browser_upload_shell_ges_production [data-testid="stFileUploaderDropzone"] button::after {
             content: "GES Üretimi";
@@ -1157,11 +1201,18 @@ def audit_extracted_dataset(dataset: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def remember_dark_mode_preference() -> None:
+    st.session_state["_dark_mode_preference"] = bool(
+        st.session_state.get("dark_mode", False)
+    )
+
+
 def initialize_session_state() -> None:
+    st.session_state.pop("distribution_only_mode", None)
+    st.session_state.pop("invoice_only_mode", None)
     defaults: dict[str, Any] = {
         "selected_root_folder": "",
         "selected_invoice_file": "",
-        "dark_mode": False,
         "processing_done": False,
         "extracted_df": None,
         "stats": {},
@@ -1182,7 +1233,6 @@ def initialize_session_state() -> None:
         "consumption_report_error": None,
         "processing_logs": [],
         "analysis_signature": None,
-        "distribution_only_mode": False,
 
     }
     for key, value in defaults.items():
@@ -6836,16 +6886,15 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         container=st.sidebar,
         invalidate_analysis=False,
     )
-    render_reconciliation_consumption_file_picker()
     selected_eno_file = render_browser_excel_picker(
-        "📄 Kesin Liste (isteğe bağlı)",
+        "📄 Kesin Liste",
         category="eno",
         selected_key="selected_eno_file",
         container=st.sidebar,
         help="Sayaç ID → EIC ve müşteri eşleştirmesi için Excel dosyasını seçin.",
     )
-    st.sidebar.caption("Kesin Liste seçilmezse yüklenen dağıtım klasöründe otomatik aranır.")
-    st.sidebar.caption("Seçim yalnızca bu oturumda tutulur; sonraki çalıştırmada tekrar seçin.")
+    render_reconciliation_consumption_file_picker()
+    render_ges_production_file_picker()
     return root_folder, invoice_file, selected_eno_file
 
 
@@ -6895,13 +6944,11 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
         else:
             st.sidebar.info("Excel dosyası seçilmedi veya dosya penceresi açılamadı. Dosya yolunu aşağıya yazabilirsiniz.")
 
-    render_reconciliation_consumption_file_picker()
-
     selected_eno_file = st.session_state.get("selected_eno_file", "")
     eno_button, eno_status = st.sidebar.columns([9, 1], gap="small", vertical_alignment="center")
     with eno_button:
         select_eno = st.button(
-            "📄 Kesin Liste (isteğe bağlı)",
+            "📄 Kesin Liste",
             width="stretch",
             key="select_eno_file",
             help="Sayaç ID → EIC ve müşteri eşleştirmesi için Kesin Liste Excel dosyasını seçin.",
@@ -6911,8 +6958,8 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             eno_status,
             bool(selected_eno_file and os.path.isfile(selected_eno_file)),
         )
-    st.sidebar.caption("Kesin Liste seçilmezse SKF klasörünün içinde otomatik aranır.")
-    st.sidebar.caption("Seçim yalnızca bu oturumda tutulur; sonraki çalıştırmada tekrar seçin.")
+    render_reconciliation_consumption_file_picker()
+    render_ges_production_file_picker()
 
     if select_eno:
         new_eno_file = select_excel_file_via_dialog(
@@ -6953,7 +7000,7 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             placeholder="",
         ).strip()
         selected_eno_file = st.text_input(
-            "Kesin Liste Excel dosyası (isteğe bağlı)",
+            "Kesin Liste Excel dosyası",
             key="manual_selected_eno_file",
             type="password",
             placeholder="",
@@ -7024,19 +7071,16 @@ def render_ges_production_file_picker() -> None:
         if selected_file and not os.path.isfile(selected_file):
             st.sidebar.warning("Seçilen GES Üretimi dosyası bulunamadı; dosyayı yeniden seçin.")
 
-    st.sidebar.caption("Tedarikçi LUM bildirimi (.xlsx) dosyası.")
-
-
 def render_sidebar() -> tuple[str, str, str | None, bool]:
     logo_path = BASE_DIR / "CK_Enerji_-_Yatay.png"
     if logo_path.exists():
         st.sidebar.image(logo_path.read_bytes(), width="stretch")
     st.sidebar.subheader("📁 Veri Kaynağı")
+    st.sidebar.divider()
     if uses_browser_file_inputs():
         root_folder, invoice_file, selected_eno_file = render_browser_sidebar_inputs()
     else:
         root_folder, invoice_file, selected_eno_file = render_native_sidebar_inputs()
-    render_ges_production_file_picker()
     if selected_eno_file and os.path.isfile(selected_eno_file):
         valid_eno_file = True
     elif selected_eno_file:
@@ -7052,24 +7096,13 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
         st.sidebar.error("⚠️ Sistem mapping dosyası bulunamadı: SKF Başlıkları.xlsx")
     mapping_path = embedded_mapping_path if os.path.isfile(embedded_mapping_path) else None
     valid_invoice_file = not invoice_file or os.path.isfile(invoice_file)
-    only_distribution_data = st.sidebar.checkbox(
-        "Yalnızca Dağıtım SKF'si",
-        key="distribution_only_mode",
-        disabled=bool(st.session_state.get("invoice_only_mode")),
-        help="21 bölgedeki dağıtım dosyalarını birleştirip düzenlenmiş SKF çıktısı oluşturur.",
-    )
-    only_our_invoice_data = st.sidebar.checkbox(
-        "Yaln\u0131zca Bizim Kesti\u011fimiz Faturalar",
-        key="invoice_only_mode",
-        disabled=only_distribution_data,
-        help="Se\u00e7ili da\u011f\u0131t\u0131m klas\u00f6r\u00fc bu i\u015flemde kullan\u0131lmaz; yaln\u0131zca fatura verisi haz\u0131rlan\u0131r.",
-    )
+    # The selected files determine the processing mode and primary button label.
+    only_distribution_data = bool(root_folder and not invoice_file)
+    only_our_invoice_data = bool(invoice_file and not root_folder)
     if invoice_file and not valid_invoice_file and not only_distribution_data:
         st.sidebar.error(f"{INVOICE_UPLOAD_LABEL} i\u00e7in se\u00e7ilen Excel dosyas\u0131 bulunamad\u0131.")
     invoice_only_mode = (
-        not only_distribution_data
-        and (only_our_invoice_data or not root_folder)
-        and bool(invoice_file and valid_invoice_file)
+        only_our_invoice_data and bool(invoice_file and valid_invoice_file)
     )
     if only_distribution_data:
         upload_categories = ["distribution", "eno"]
@@ -7118,11 +7151,13 @@ def render_sidebar() -> tuple[str, str, str | None, bool]:
     else:
         st.sidebar.success("Verileriniz %100 yerelde işlenmektedir, ETSO kodları gizlidir.")
 
-
-
-    # Karanlık / Aydınlık mod
     st.sidebar.divider()
-    st.sidebar.toggle("🌙 Karanlık Mod", key="dark_mode")
+    with st.sidebar.container(key="sidebar_dark_mode_control"):
+        st.toggle(
+            "🌙 Karanlık Mod",
+            key="dark_mode",
+            on_change=remember_dark_mode_preference,
+        )
 
     return (
         "" if only_our_invoice_data else root_folder,
@@ -7412,7 +7447,7 @@ def render_analysis_panel(
     valid_root = bool(root_folder and os.path.isdir(root_folder))
     valid_invoice_file = not invoice_file or os.path.isfile(invoice_file)
     valid_mapping = bool(mapping_path and os.path.isfile(mapping_path))
-    distribution_only_mode = bool(st.session_state.get("distribution_only_mode"))
+    distribution_only_mode = bool(valid_root and not invoice_file)
     selected_eno_file = str(st.session_state.get("selected_eno_file", "")).strip()
     valid_eno_file = not selected_eno_file or os.path.isfile(selected_eno_file)
     selected_reconciliation_consumption_file = str(
@@ -7756,10 +7791,6 @@ def render_analysis_panel(
 
     if invoice_sources:
         st.markdown(f"#### {INVOICE_UPLOAD_LABEL}")
-        st.caption(
-            f"{len(invoice_sources)} sayfa çıktı dosyasına eklendi; her sayfa için "
-            "Bizim Kestiğimiz 2 karşılaştırma sekmesi oluşturuldu."
-        )
 
     source_header_warnings = stats.get("source_header_warnings", [])
     format_warning_rows = build_format_warning_rows(source_header_warnings, raw_df)
@@ -7802,6 +7833,10 @@ def render_analysis_panel(
 
 
 def main() -> None:
+    if "dark_mode" not in st.session_state:
+        st.session_state["dark_mode"] = bool(
+            st.session_state.get("_dark_mode_preference", False)
+        )
     inject_copy_shortcut_guard()
     inject_corporate_css()
     download_only_web = os.name != "nt"
