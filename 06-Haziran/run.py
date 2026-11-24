@@ -52,51 +52,13 @@ def show_startup_error(details: str, exit_code: int | None = None) -> None:
     show_message_box(message, "SKF - Başlatma Hatası")
 
 
-def find_chrome_executable() -> str | None:
-    candidates = [
-        os.path.join(os.environ.get("PROGRAMFILES", ""), "Google", "Chrome", "Application", "chrome.exe"),
-        os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
-        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Google", "Chrome", "Application", "chrome.exe"),
-    ]
-    for candidate in candidates:
-        if candidate and os.path.isfile(candidate):
-            return candidate
-
+def open_app_browser(url: str) -> bool:
     if os.name == "nt":
         try:
-            import winreg
-
-            app_path_keys = (
-                (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
-                (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
-                (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
-            )
-            for root, key_path in app_path_keys:
-                try:
-                    with winreg.OpenKey(root, key_path) as key:
-                        candidate, _ = winreg.QueryValueEx(key, None)
-                    if os.path.isfile(candidate):
-                        return candidate
-                except OSError:
-                    continue
-        except ImportError:
-            pass
-    return None
-
-
-def open_app_browser(url: str) -> bool:
-    chrome_executable = find_chrome_executable()
-    if chrome_executable:
-        try:
-            subprocess.Popen(
-                [chrome_executable, url],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            os.startfile(url)
             return True
         except OSError:
-            pass
+            return False
     return webbrowser.open_new_tab(url)
 
 
@@ -127,8 +89,8 @@ def open_local_app_when_ready(port: int, stop_event: threading.Event) -> None:
 
 def show_browser_error(url: str, details: str = "") -> None:
     message = (
-        "SKF sunucusu çalışıyor ancak tarayıcı açılamadı. "
-        "Google Chrome'da şu yerel adresi açın:\n\n"
+        "SKF sunucusu çalışıyor ancak varsayılan tarayıcı açılamadı. "
+        "Varsayılan tarayıcınızda şu yerel adresi açın:\n\n"
         f"{url}"
     )
     if details:
