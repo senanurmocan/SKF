@@ -2119,9 +2119,11 @@ def beautify_output_worksheets(
     report_workbook: Any,
     *,
     skip_sheet_names: set[str] | None = None,
+    only_sheet_names: set[str] | None = None,
 ) -> None:
     """Apply consistent readability formatting with cached styles and widths."""
     from copy import copy
+    from openpyxl.cell.cell import Cell
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
@@ -2133,6 +2135,8 @@ def beautify_output_worksheets(
     numeric_header_terms = ("tl", "kwh", "kw", "bedel", "tuketim", "matrah", "toplam", "fark", "tutar", "kdv")
     separator_borders: dict[int, Any] = {}
     alignment_cache: dict[tuple[int, bool], Any] = {}
+    transformed_styles: dict[tuple[int, str, bool, bool], Any] = {}
+    style_template: Any = None
 
     def add_column_separator(cell: Any) -> None:
         border_id = cell._style.borderId if cell.has_style else 0
@@ -2146,6 +2150,8 @@ def beautify_output_worksheets(
     skipped_sheets = skip_sheet_names or set()
     for worksheet in report_workbook.worksheets:
         if worksheet.title in skipped_sheets:
+            continue
+        if only_sheet_names is not None and worksheet.title not in only_sheet_names:
             continue
         max_row = worksheet.max_row
         max_column = worksheet.max_column
@@ -2171,18 +2177,30 @@ def beautify_output_worksheets(
             worksheet.auto_filter.ref = f"A1:{last_column}{max(max_row, 1)}"
 
         worksheet.row_dimensions[1].height = max(worksheet.row_dimensions[1].height or 0, 36)
-        for cell in worksheet[1]:
+        for column_index in range(1, max_column + 1):
+            cell = worksheet._cells.get((1, column_index))
+            if cell is None:
+                cell = worksheet.cell(1, column_index)
             if cell.value is None:
                 continue
-            if cell.fill.fill_type is None:
-                cell.fill = header_fill
-                cell.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-            else:
-                header_font = copy(cell.font)
-                header_font.bold = True
-                cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            add_column_separator(cell)
+            style_key = (cell.style_id, "header", False, False)
+            styled_style = transformed_styles.get(style_key)
+            if styled_style is None:
+                if style_template is None:
+                    style_template = Cell(worksheet, row=1, column=1)
+                style_template._style = copy(cell._style) if cell._style is not None else None
+                add_column_separator(style_template)
+                if cell.fill.fill_type is None:
+                    style_template.fill = header_fill
+                    style_template.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+                else:
+                    header_font = copy(style_template.font)
+                    header_font.bold = True
+                    style_template.font = header_font
+                style_template.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                styled_style = copy(style_template._style)
+                transformed_styles[style_key] = styled_style
+            cell._style = styled_style
 
         maximum_lengths = [0] * max_column
         populated_columns = [False] * max_column
@@ -2217,28 +2235,41 @@ def beautify_output_worksheets(
 
         for row_index in range(2, max_row + 1):
             for column_index in range(1, max_column + 1):
-                cell = worksheet.cell(row_index, column_index)
-                add_column_separator(cell)
-                if not cell.value and cell.value != 0:
-                    continue
+                cell = worksheet._cells.get((row_index, column_index))
+                if cell is None:
+                    cell = worksheet.cell(row_index, column_index)
+                has_value = bool(cell.value) or cell.value == 0
                 is_numeric_column = column_index in numeric_columns
-                alignment_id = cell._style.alignmentId if cell.has_style else 0
-                alignment_key = (alignment_id, is_numeric_column)
-                alignment = alignment_cache.get(alignment_key)
-                if alignment is None:
-                    alignment = Alignment(
-                        horizontal="right" if is_numeric_column else cell.alignment.horizontal,
-                        vertical="center",
-                        wrap_text=cell.alignment.wrap_text,
-                    )
-                    alignment_cache[alignment_key] = alignment
-                cell.alignment = alignment
-                if is_numeric_column and cell.number_format == "General":
-                    cell.number_format = numeric_format
-                if row_index % 2 == 0 and cell.fill.fill_type is None:
-                    cell.fill = alternate_fill
-                if cell.border.bottom.style is None:
-                    cell.border = body_border
+                style_action = "body" if has_value else "separator"
+                is_alternate_row = row_index % 2 == 0
+                style_key = (cell.style_id, style_action, is_numeric_column, is_alternate_row)
+                styled_style = transformed_styles.get(style_key)
+                if styled_style is None:
+                    if style_template is None:
+                        style_template = Cell(worksheet, row=1, column=1)
+                    style_template._style = copy(cell._style) if cell._style is not None else None
+                    add_column_separator(style_template)
+                    if has_value:
+                        alignment_id = style_template._style.alignmentId if style_template.has_style else 0
+                        alignment_key = (alignment_id, is_numeric_column)
+                        alignment = alignment_cache.get(alignment_key)
+                        if alignment is None:
+                            alignment = Alignment(
+                                horizontal="right" if is_numeric_column else style_template.alignment.horizontal,
+                                vertical="center",
+                                wrap_text=style_template.alignment.wrap_text,
+                            )
+                            alignment_cache[alignment_key] = alignment
+                        style_template.alignment = alignment
+                        if is_numeric_column and style_template.number_format == "General":
+                            style_template.number_format = numeric_format
+                        if is_alternate_row and style_template.fill.fill_type is None:
+                            style_template.fill = alternate_fill
+                        if style_template.border.bottom.style is None:
+                            style_template.border = body_border
+                    styled_style = copy(style_template._style)
+                    transformed_styles[style_key] = styled_style
+                cell._style = styled_style
 
 
 def append_selected_invoice_file(
@@ -2259,6 +2290,7 @@ def append_selected_invoice_file(
         return output_bytes, [], [f"Desteklenmeyen Excel dosya t\u00fcr\u00fc: {Path(file_path).name}"], 0
 
     from copy import copy
+    from openpyxl.cell.cell import Cell
     from openpyxl import load_workbook
 
     tariff_rates, tariff_rate_error = load_system_usage_distribution_rates(
@@ -2273,6 +2305,7 @@ def append_selected_invoice_file(
     source_workbook = None
     source_values_workbook = None
     imported_sheets: list[dict[str, Any]] = []
+    sheets_to_reformat: set[str] = set()
     try:
         if extension in {".xlsx", ".xlsm"}:
             source_workbook = load_workbook(
@@ -2315,18 +2348,24 @@ def append_selected_invoice_file(
                 target_sheet = report_workbook.create_sheet(unique_title)
                 style_cache: dict[int, Any] = {}
                 sheet_has_formulas = False
+                target_max_row = 0
 
                 for row in source_rows:
+                    row_index = row[0].row if row else target_max_row
+                    row_has_values = False
                     for source_cell in row:
                         if source_cell.value is None:
                             continue
+                        row_has_values = True
                         if source_cell.data_type == "f":
                             sheet_has_formulas = True
-                        target_cell = target_sheet.cell(
-                            source_cell.row,
-                            source_cell.column,
-                            source_cell.value,
+                        target_cell = Cell(
+                            target_sheet,
+                            row=source_cell.row,
+                            column=source_cell.column,
+                            value=source_cell.value,
                         )
+                        target_sheet._cells[(source_cell.row, source_cell.column)] = target_cell
                         target_cell.data_type = source_cell.data_type
                         if source_cell.has_style:
                             style_id = source_cell._style_id
@@ -2341,6 +2380,9 @@ def append_selected_invoice_file(
                                 style_cache[style_id] = copy(target_cell._style)
                             else:
                                 target_cell._style = cached_style
+                    if row_has_values:
+                        target_max_row = row_index
+                target_sheet._current_row = target_max_row
                 if sheet_has_formulas and not is_region_summary:
                     if source_values_workbook is None:
                         source_values_workbook = load_workbook(
@@ -2506,6 +2548,9 @@ def append_selected_invoice_file(
                 consumption_by_etso, consumption_source_stats = load_reconciliation_consumption_by_etso(
                     reconciliation_consumption_file
                 )
+                reconciliation_status_by_etso = consumption_source_stats.pop(
+                    "_reconciliation_consumption_status_by_etso", {}
+                )
                 comparison_worksheet = next(
                     (
                         sheet for sheet in report_workbook.worksheets
@@ -2520,12 +2565,14 @@ def append_selected_invoice_file(
                         report_workbook,
                         comparison_worksheet,
                         consumption_by_etso,
+                        reconciliation_status_by_etso,
                     )
                 elif comparison_sheet_names:
                     consumption_comparison_stats = add_reconciliation_only_comparison_worksheet(
                         report_workbook,
                         comparison_sheet_names,
                         consumption_by_etso,
+                        reconciliation_status_by_etso,
                     )
                 else:
                     consumption_comparison_stats = {
@@ -2541,14 +2588,37 @@ def append_selected_invoice_file(
                 if imported_sheets:
                     imported_sheets[0]["reconciliation_consumption_warning"] = str(error)
 
-        if comparison_summary_sheet_name:
-            add_our_invoice_summary_columns(report_workbook, comparison_summary_sheet_name)
+        if comparison_summary_sheet_name and add_our_invoice_summary_columns(
+            report_workbook,
+            comparison_summary_sheet_name,
+        ):
+            summary_title = "\u00d6zet"
+            if summary_title in report_workbook.sheetnames:
+                sheets_to_reformat.add(summary_title)
 
-        # The distribution detail was already formatted when the base workbook
-        # was prepared; invoice import does not modify that sheet.
+        sheets_to_reformat.update(
+            source.get("output_sheet_name")
+            for source in imported_sheets
+            if source.get("output_sheet_name")
+        )
+        sheets_to_reformat.update(comparison_sheet_names)
+        sheets_to_reformat.update(
+            source.get(key)
+            for source in imported_sheets
+            for key in (
+                "reconciliation_sheet_name",
+                "reconciliation_consumption_sheet_name",
+                "reconciliation_consumption_comparison_sheet_name",
+            )
+            if source.get(key)
+        )
+        if comparison_summary_sheet_name:
+            sheets_to_reformat.add(comparison_summary_sheet_name)
+
+        # Previously formatted report sheets are unchanged by invoice import.
         beautify_output_worksheets(
             report_workbook,
-            skip_sheet_names={"Dağıtımın Kestiği"},
+            only_sheet_names=sheets_to_reformat,
         )
         report_workbook.calculation.calcMode = "auto"
         report_workbook.calculation.fullCalcOnLoad = True
@@ -2871,6 +2941,97 @@ def load_reconciliation_consumption_by_etso(
 
         workbook = load_workbook(file_path, read_only=True, data_only=True, keep_vba=extension == ".xlsm")
         try:
+            # The monthly reconciliation export keeps the lost-draw value and
+            # invoice status together on its second sheet.
+            if len(workbook.worksheets) > 1:
+                reconciliation_sheet = workbook.worksheets[1]
+                reconciliation_header_row = None
+                reconciliation_columns: dict[str, int] = {}
+                for row_index, row in enumerate(
+                    reconciliation_sheet.iter_rows(max_row=12, values_only=True), start=1
+                ):
+                    normalized = {
+                        _normalize_tariff_lookup_key(value): column_index
+                        for column_index, value in enumerate(row, start=1)
+                        if value is not None
+                    }
+                    etso_column = normalized.get("sayacetso")
+                    consumption_column = normalized.get("kayiplicekismwh")
+                    draw_column = normalized.get("cekisorg")
+                    status_column = next(
+                        (
+                            column_index
+                            for header, column_index in normalized.items()
+                            if "fatura" in header and "durum" in header
+                        ),
+                        None,
+                    )
+                    if etso_column and consumption_column:
+                        reconciliation_header_row = row_index
+                        reconciliation_columns = {
+                            "etso": etso_column,
+                            "consumption": consumption_column,
+                        }
+                        if draw_column is not None:
+                            reconciliation_columns["draw"] = draw_column
+                        if status_column is not None:
+                            reconciliation_columns["status"] = status_column
+                        break
+
+                if reconciliation_header_row is not None:
+                    first_column = min(reconciliation_columns.values())
+                    last_column = max(reconciliation_columns.values())
+                    offsets = {
+                        key: column - first_column
+                        for key, column in reconciliation_columns.items()
+                    }
+                    statuses_by_etso: dict[str, list[str]] = {}
+                    source_row_count = 0
+                    for row in reconciliation_sheet.iter_rows(
+                        min_row=reconciliation_header_row + 1,
+                        min_col=first_column,
+                        max_col=last_column,
+                        values_only=True,
+                    ):
+                        code_value = row[offsets["etso"]] if len(row) > offsets["etso"] else None
+                        code = reconciliation_etso_key(code_value)
+                        if not code:
+                            continue
+                        if "status" in offsets:
+                            raw_status = row[offsets["status"]] if len(row) > offsets["status"] else None
+                            status = str(raw_status).strip() if raw_status is not None else ""
+                            if status.casefold() in {"", "-", "–", "—", "#n/a", "n/a", "none"}:
+                                status = "-"
+                            statuses = statuses_by_etso.setdefault(code, [])
+                            if status not in statuses:
+                                statuses.append(status)
+                        if "draw" in offsets:
+                            draw_value = row[offsets["draw"]] if len(row) > offsets["draw"] else None
+                            if _normalize_tariff_lookup_key(draw_value) != "evet":
+                                continue
+                        consumption_value = (
+                            row[offsets["consumption"]]
+                            if len(row) > offsets["consumption"] else None
+                        )
+                        aggregates_mwh[code] = (
+                            aggregates_mwh.get(code, 0.0) + safe_float(consumption_value)
+                        )
+                        source_row_count += 1
+
+                    stats: dict[str, Any] = {
+                        "reconciliation_consumption_source_row_count": source_row_count,
+                        "reconciliation_consumption_etso_count": len(aggregates_mwh),
+                    }
+                    if "status" in reconciliation_columns:
+                        stats["_reconciliation_consumption_status_by_etso"] = {
+                            code: " / ".join(statuses) if statuses else "-"
+                            for code, statuses in statuses_by_etso.items()
+                        }
+                    return (
+                        {code: value * 1000 for code, value in aggregates_mwh.items()},
+                        stats,
+                    )
+
             found_headers = False
             for worksheet in workbook.worksheets:
                 header_row_index = None
@@ -2972,6 +3133,7 @@ def add_reconciliation_consumption_columns(
     report_workbook: Any,
     comparison_sheet: Any,
     consumption_by_etso: dict[str, float],
+    status_by_etso: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Append reconciliation consumption and signed differences to a comparison sheet."""
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -3083,6 +3245,9 @@ def add_reconciliation_consumption_columns(
         "Bizim Kestiğimiz - Uzlaştırma Tüketim Farkı (kWh)",
         "Dağıtım - Uzlaştırma Tüketim Farkı (kWh)",
     ]
+    include_status = bool(status_by_etso)
+    if include_status:
+        new_headers.append("Taslak/Kesin Durumu")
     start_column = comparison_sheet.max_column + 1
     for offset, header in enumerate(new_headers):
         cell = comparison_sheet.cell(1, start_column + offset, header)
@@ -3146,6 +3311,12 @@ def add_reconciliation_consumption_columns(
                 f'{distribution_letter}{row_index}-{reconciliation_letter}{row_index},"-")'
             )
 
+        if include_status:
+            status_cell = comparison_sheet.cell(row_index, start_column + 3)
+            status_cell.value = (status_by_etso or {}).get(code, "-") if code else "-"
+            status_cell.alignment = row_alignment
+            status_cell.border = row_border
+
         if value is not None:
             common = None
             own_energy_value = resolve_cell_value(comparison_sheet, row_index, own_energy_column)
@@ -3176,7 +3347,7 @@ def add_reconciliation_consumption_columns(
                             "Fark (kWh)": distribution_difference,
                         })
 
-        for column in range(start_column, start_column + len(new_headers)):
+        for column in range(start_column, start_column + 3):
             cell = comparison_sheet.cell(row_index, column)
             cell.alignment = row_alignment
             cell.border = row_border
@@ -3185,6 +3356,8 @@ def add_reconciliation_consumption_columns(
     comparison_sheet.column_dimensions[get_column_letter(start_column)].width = 24
     comparison_sheet.column_dimensions[get_column_letter(start_column + 1)].width = 39
     comparison_sheet.column_dimensions[get_column_letter(start_column + 2)].width = 39
+    if include_status:
+        comparison_sheet.column_dimensions[get_column_letter(start_column + 3)].width = 22
     comparison_sheet.row_dimensions[1].height = max(comparison_sheet.row_dimensions[1].height or 0, 48)
     comparison_sheet.auto_filter.ref = (
         f"A1:{get_column_letter(comparison_sheet.max_column)}{max(1, comparison_sheet.max_row)}"
@@ -3207,6 +3380,7 @@ def add_reconciliation_only_comparison_worksheet(
     report_workbook: Any,
     invoice_sheet_names: list[str],
     consumption_by_etso: dict[str, float],
+    status_by_etso: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a useful ETSO comparison when distribution invoice data is not loaded."""
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -3227,6 +3401,10 @@ def add_reconciliation_only_comparison_worksheet(
         "Dağıtım - Uzlaştırma Tüketim Farkı (kWh)", "ETSO Eşleşmesi",
     ]
     header_colors = ["D9E2F3", "D9E2F3", "D9E2F3", "D9B38C", "D9B38C", "F4B183", "F4B183", "FFD966", "FFD966", "FFF2CC"]
+    include_status = bool(status_by_etso)
+    if include_status:
+        headers.append("Taslak/Kesin Durumu")
+        header_colors.append("FFF2CC")
     for column, (header, color) in enumerate(zip(headers, header_colors), start=1):
         cell = worksheet.cell(1, column, header)
         cell.font = Font(name="Calibri", size=10, bold=True, color="1F1F1F")
@@ -3320,6 +3498,8 @@ def add_reconciliation_only_comparison_worksheet(
                 except (TypeError, ValueError):
                     pass
         worksheet.cell(output_row, 9, "-")
+        if include_status:
+            worksheet.cell(output_row, 11, (status_by_etso or {}).get(code, "-") if code else "-")
         for column in range(1, len(headers) + 1):
             cell = worksheet.cell(output_row, column)
             cell.alignment = Alignment(vertical="center")
@@ -3331,7 +3511,10 @@ def add_reconciliation_only_comparison_worksheet(
     worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(rows) + 1)}"
     worksheet.sheet_view.showGridLines = True
     worksheet.row_dimensions[1].height = 48
-    for column, width in enumerate([28, 23, 42, 28, 25, 30, 24, 39, 39, 24], start=1):
+    column_widths = [28, 23, 42, 28, 25, 30, 24, 39, 39, 24]
+    if include_status:
+        column_widths.append(22)
+    for column, width in enumerate(column_widths, start=1):
         worksheet.column_dimensions[get_column_letter(column)].width = width
     return {
         "reconciliation_consumption_comparison_sheet_name": title,
@@ -6990,7 +7173,7 @@ def render_reconciliation_consumption_file_picker() -> None:
             category="reconciliation",
             selected_key="selected_reconciliation_consumption_file",
             container=st.sidebar,
-            help="T\u00fcketim kar\u015f\u0131la\u015ft\u0131rma raporu i\u00e7in kullan\u0131l\u0131r.",
+            help="Seçilen dosya analizlerde kullanılmaya devam eder; değiştirmek için yeniden seçin.",
             invalidate_analysis=False,
         )
         return
@@ -7004,7 +7187,7 @@ def render_reconciliation_consumption_file_picker() -> None:
         select_reconciliation_file = st.button(
             "⚖️ Uzlaştırma Tüketim",
             key="select_reconciliation_consumption_file",
-            help="Bu dosya bir analizde kullanılır; sonraki analiz için yeniden seçin.",
+            help="Seçilen dosya analizlerde kullanılmaya devam eder; değiştirmek için yeniden seçin.",
             width="stretch",
         )
     with status_column:
@@ -7307,21 +7490,10 @@ def render_analysis_panel(
                 [],
             )
             st.session_state["processing_logs"] = logs
-            if selected_reconciliation_consumption_file:
-                st.session_state["selected_reconciliation_consumption_file"] = ""
-                if uses_browser_file_inputs():
-                    get_upload_workspace().clear("reconciliation")
-                    generation_key = "_upload_generation_reconciliation"
-                    st.session_state[generation_key] = st.session_state.get(generation_key, 0) + 1
-                    st.session_state.pop("_upload_identity_reconciliation", None)
-                    st.session_state.pop("_upload_error_reconciliation", None)
-                current_signature = (*current_signature[:4], "", *current_signature[5:])
             st.session_state["analysis_signature"] = current_signature
             st.session_state["processing_done"] = True
             progress_bar.progress(100)
             status_placeholder.success("Analiz tamamlandı.")
-            if selected_reconciliation_consumption_file:
-                st.rerun()
         except Exception:
             clear_analysis_state()
             status_placeholder.empty()
