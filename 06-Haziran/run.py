@@ -49,7 +49,10 @@ def show_startup_error(details: str, exit_code: int | None = None) -> None:
     else:
         message += "\n\nUygulama hata ayrıntısı üretmedi."
 
-    show_message_box(message, "SKF - Başlatma Hatası")
+    if os.environ.get("SKF_LAUNCHER_SUPERVISED") == "1":
+        print(message, file=sys.stderr, flush=True)
+    else:
+        show_message_box(message, "SKF - Başlatma Hatası")
 
 
 def open_app_browser(url: str) -> bool:

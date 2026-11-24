@@ -216,7 +216,8 @@ Teknik bilgiler
 
 def write_launcher(destination: Path) -> None:
     start_launcher = r"""Option Explicit
-Dim shell, fso, packageRoot, pythonExe, runScript, commandLine
+Dim shell, fso, packageRoot, pythonExe, runScript, commandLine, commandText
+Dim logPath, stopMarker, exitCode, userStopped, launchErrorNumber, launchErrorText, logDetails, message
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 packageRoot = fso.GetParentFolderName(WScript.ScriptFullName)
@@ -226,22 +227,90 @@ If Not fso.FileExists(pythonExe) Or Not fso.FileExists(runScript) Then
   MsgBox "Uygulama dosyalari eksik. ZIP paketini yeniden cikarin.", vbExclamation, "SKF"
   WScript.Quit 1
 End If
+logPath = fso.BuildPath(fso.GetSpecialFolder(2), "SKF-" & fso.GetTempName() & ".log")
+stopMarker = fso.BuildPath(fso.GetSpecialFolder(2), "SKF-user-stop.flag")
+If fso.FileExists(stopMarker) Then fso.DeleteFile stopMarker, True
 shell.Environment("Process")("SKF_FILE_INPUT_MODE") = "native"
 shell.Environment("Process")("STREAMLIT_BROWSER_GATHER_USAGE_STATS") = "false"
-commandLine = Chr(34) & pythonExe & Chr(34) & " " & Chr(34) & runScript & Chr(34)
-shell.Run commandLine, 0, False
+shell.Environment("Process")("SKF_LAUNCHER_SUPERVISED") = "1"
+shell.Environment("Process")("PYTHONUTF8") = "1"
+shell.Environment("Process")("PYTHONIOENCODING") = "utf-8"
+commandText = Chr(34) & pythonExe & Chr(34) & " " & Chr(34) & runScript & Chr(34) & _
+  " > " & Chr(34) & logPath & Chr(34) & " 2>&1"
+commandLine = "cmd.exe /d /s /c " & Chr(34) & commandText & Chr(34)
+On Error Resume Next
+exitCode = shell.Run(commandLine, 0, True)
+launchErrorNumber = Err.Number
+launchErrorText = Err.Description
+Err.Clear
+On Error GoTo 0
+userStopped = fso.FileExists(stopMarker)
+If userStopped Then fso.DeleteFile stopMarker, True
+If launchErrorNumber <> 0 Then
+  logDetails = ReadLogText(fso, logPath)
+  If Len(logDetails) > 4000 Then logDetails = "... (son bolum gosteriliyor) ..." & vbCrLf & Right(logDetails, 4000)
+  message = "SKF baslatilamadi." & vbCrLf & _
+    "Windows hatasi: " & launchErrorText & " (" & launchErrorNumber & ")"
+  If Len(logDetails) > 0 Then message = message & vbCrLf & vbCrLf & logDetails
+  MsgBox message, vbExclamation, "SKF - Baslatma Hatasi"
+  If fso.FileExists(logPath) Then fso.DeleteFile logPath, True
+  WScript.Quit 1
+End If
+If exitCode <> 0 And Not userStopped Then
+  logDetails = ReadLogText(fso, logPath)
+  If Len(logDetails) > 4000 Then logDetails = "... (son bolum gosteriliyor) ..." & vbCrLf & Right(logDetails, 4000)
+  message = "SKF acilirken bir sorun olustu veya uygulama beklenmedik sekilde kapandi." & _
+    vbCrLf & "Cikis kodu: " & exitCode
+  If Len(logDetails) > 0 Then message = message & vbCrLf & vbCrLf & "Hata ayrintisi:" & vbCrLf & logDetails
+  MsgBox message, vbExclamation, "SKF - Baslatma Hatasi"
+End If
+If fso.FileExists(logPath) Then fso.DeleteFile logPath, True
+
+Function ReadLogText(fileSystem, filePath)
+  Dim stream, textFile
+  ReadLogText = ""
+  On Error Resume Next
+  Set stream = CreateObject("ADODB.Stream")
+  If Err.Number = 0 Then
+    stream.Type = 2
+    stream.Charset = "utf-8"
+    stream.Open
+    stream.LoadFromFile filePath
+    If Err.Number = 0 Then ReadLogText = stream.ReadText
+    stream.Close
+  End If
+  If Len(ReadLogText) = 0 Then
+    Err.Clear
+    Set textFile = fileSystem.OpenTextFile(filePath, 1, False, 0)
+    If Err.Number = 0 Then
+      ReadLogText = textFile.ReadAll
+      textFile.Close
+    End If
+  End If
+  Err.Clear
+  On Error GoTo 0
+End Function
 """
     stop_launcher = r"""Option Explicit
-Dim shell, fso, packageRoot, runScript, wmi, process, found
+Dim shell, fso, packageRoot, runScript, wmi, process, found, stopMarker, markerFile
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 packageRoot = fso.GetParentFolderName(WScript.ScriptFullName)
 runScript = fso.BuildPath(packageRoot, "06-Haziran\run.py")
+stopMarker = fso.BuildPath(fso.GetSpecialFolder(2), "SKF-user-stop.flag")
 Set wmi = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
 found = False
 For Each process In wmi.ExecQuery("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='python.exe'")
   If Not IsNull(process.CommandLine) Then
     If InStr(1, process.CommandLine, runScript, vbTextCompare) > 0 Then
+      On Error Resume Next
+      Set markerFile = fso.CreateTextFile(stopMarker, True)
+      If Err.Number = 0 Then
+        markerFile.WriteLine runScript
+        markerFile.Close
+      End If
+      Err.Clear
+      On Error GoTo 0
       shell.Run "taskkill.exe /PID " & process.ProcessId & " /T /F", 0, True
       found = True
     End If
