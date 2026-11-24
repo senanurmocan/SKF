@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_SOURCE = ROOT / "06-Haziran"
 REQUIREMENTS = APP_SOURCE / "requirements.txt"
-PACKAGE_VERSION = "1.3.3"
+PACKAGE_VERSION = "1.3.4"
 PACKAGE_NAME = f"SKF-Yerel-Paket-{PACKAGE_VERSION}"
 _configured_output = Path(os.environ.get("SKF_PACKAGE_OUTPUT_DIR", "dist"))
 OUTPUT_DIR = (
@@ -175,6 +175,7 @@ Başlatma
 2. Klasördeki `SKF'yi Başlat.vbs` dosyasına çift tıklayın.
 3. Portal siyah komut penceresi göstermeden varsayılan tarayıcıda açılır.
    Başlatma hatası olursa hata metni Windows uyarı penceresinde gösterilir.
+   Portal hazır olduğunda Chrome açılır; açılamazsa yerel adres uyarıda gösterilir.
 4. Durdurmak için `SKF'yi Kapat.vbs` dosyasına çift tıklayın.
 
 Kullanım ve veri akışı

@@ -36,7 +36,7 @@ CSS = r"""
     padding-bottom: 3mm;
   }
   @top-right {
-    content: "YEREL WINDOWS UYGULAMASI  ·  v1.3.3";
+    content: "YEREL WINDOWS UYGULAMASI  ·  v1.3.4";
     color: #163f75;
     font: 700 8pt Arial, sans-serif;
     text-align: right;
