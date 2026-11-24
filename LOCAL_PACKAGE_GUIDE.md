@@ -5,6 +5,7 @@
 Windows paketi kullanıcı hesabı altında çalışır; Python veya Excel kurulumu
 istemez. Kullanıcı ZIP'i yerel klasörüne çıkarıp `SKF'yi Başlat.vbs` dosyasına
 çift tıklar. Uygulama siyah komut penceresi açmadan varsayılan tarayıcıda başlar.
+Başlatma hatası oluşursa hata metni Windows uyarı penceresinde otomatik gösterilir.
 Durdurmak için `SKF'yi Kapat.vbs` dosyası kullanılır. Uygulama e-posta hesabı
 veya kullanıcı girişi istemez. Dosyalar Windows'un kendi seçme pencereleriyle
 alınır ve analiz aynı bilgisayarda yürür.
@@ -28,7 +29,7 @@ Kesin Liste seçimi oturum içinde tutulur; uygulama yeniden açıldığında te
    .\.venv\Scripts\python.exe tools\build_local_windows_package.py
    ```
 
-4. Oluşan `dist\guncelleme\SKF-Yerel-Paket-1.3.2.zip` dosyasını şirketin onaylı
+4. Oluşan `dist\guncelleme\SKF-Yerel-Paket-1.3.3.zip` dosyasını şirketin onaylı
    dağıtım kanalına verin. SHA-256 değeri aynı klasördeki `.sha256` dosyasındadır.
 
 Paketleyici yalnızca uygulamanın kaynak kodunu, `SKF Başlıkları.xlsx` dosyasını,

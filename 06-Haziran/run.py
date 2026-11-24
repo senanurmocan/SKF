@@ -8,11 +8,41 @@ Güvenlik Modları:
   --lan-open  : LAN erişimi açık, XSRF kapalı (geliştirme ortamı)
 """
 
+import argparse
 import os
 import socket
 import subprocess
 import sys
-import argparse
+import traceback
+
+
+def show_startup_error(details: str, exit_code: int | None = None) -> None:
+    message = "SKF başlatılamadı."
+    if exit_code is not None:
+        message += f"\nÇıkış kodu: {exit_code}"
+
+    details = details.strip()
+    if details:
+        if len(details) > 4000:
+            details = "... (son bölüm gösteriliyor) ...\n" + details[-4000:]
+        message += f"\n\nHata ayrıntısı:\n{details}"
+    else:
+        message += "\n\nUygulama hata ayrıntısı üretmedi."
+
+    try:
+        import ctypes
+
+        message_box = ctypes.windll.user32.MessageBoxW
+        message_box.argtypes = (
+            ctypes.c_void_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_uint,
+        )
+        message_box.restype = ctypes.c_int
+        message_box(None, message, "SKF - Başlatma Hatası", 0x10010)
+    except Exception:
+        print(message, file=sys.stderr)
 
 
 def find_free_port(start_port=8505):
@@ -76,10 +106,26 @@ def main() -> int:
     app_environment = os.environ.copy()
     if args.lan or args.lan_open:
         app_environment["SKF_FILE_INPUT_MODE"] = "browser"
-    return subprocess.run(
-        cmd, cwd=os.path.dirname(app_path), env=app_environment, check=False
-    ).returncode
+    result = subprocess.run(
+        cmd,
+        cwd=os.path.dirname(app_path),
+        env=app_environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+        check=False,
+    )
+    if result.returncode != 0:
+        show_startup_error(result.stdout, result.returncode)
+    return result.returncode
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        show_startup_error(traceback.format_exc())
+        raise SystemExit(1)
