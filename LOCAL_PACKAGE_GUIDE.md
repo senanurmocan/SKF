@@ -30,7 +30,7 @@ Kesin Liste seçimi oturum içinde tutulur; uygulama yeniden açıldığında te
    .\.venv\Scripts\python.exe tools\build_local_windows_package.py
    ```
 
-4. Oluşan `dist\guncelleme\SKF-Yerel-Paket-1.3.7.zip` dosyasını şirketin onaylı
+4. Oluşan `dist\guncelleme\SKF-Yerel-Paket-1.3.8.zip` dosyasını şirketin onaylı
    dağıtım kanalına verin. SHA-256 değeri aynı klasördeki `.sha256` dosyasındadır.
 
 Paketleyici yalnızca uygulamanın kaynak kodunu, `SKF Başlıkları.xlsx` dosyasını,

@@ -11,7 +11,7 @@
 
 ## Güncel Proje Durumu — 25 Kasım 2026
 
-- **Sürüm ve giriş noktaları:** Uygulama sürümü `v1.3.7`; başlatıcı `run_app.py`,
+- **Sürüm ve giriş noktaları:** Uygulama sürümü `v1.3.8`; başlatıcı `run_app.py`,
   arayüz ve analiz akışı `06-Haziran/app.py`, fatura işleme ve Excel üretimi
   `06-Haziran/extract_and_compare.py` içindedir.
 - **Fatura işleme:** 21 EDAŞ bölgesinden `.xlsx`, `.xls`, `.xml` ve `.html`

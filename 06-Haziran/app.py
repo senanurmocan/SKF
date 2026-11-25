@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "v1.3.7"
+APP_VERSION = "v1.3.8"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
@@ -786,6 +786,13 @@ def inject_corporate_css() -> None:
         }
         [data-testid="stAlert"], [data-testid="stDataFrame"] {
             border-radius: 10px;
+        }
+        :is(
+            .st-key-distribution_only_preview,
+            .st-key-invoice_only_preview,
+            .st-key-combined_results_preview
+        ) [data-testid="stDataFrame"] > :first-child {
+            display: none !important;
         }
         [data-testid="stExpander"] {
             overflow: hidden;
@@ -7750,7 +7757,7 @@ def render_analysis_panel(
         safe_stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", str(source_stem)).strip(" .")
         safe_stem = safe_stem or "Dağıtım SKF"
         st.download_button(
-            "Birleştirilmiş Dağıtım SKF Dosyasını İndir",
+            "Birleştirilmiş Dağıtım SKF dosyasını (.xlsx) indir",
             data=output_bytes or b"",
             file_name=f"{safe_stem} - Birleştirilmiş Dağıtım SKF.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -7760,12 +7767,13 @@ def render_analysis_panel(
             on_click="ignore",
         )
         st.markdown("#### Birleştirilmiş Dağıtım SKF Önizlemesi")
-        st.dataframe(
-            format_dataframe_for_ui(raw_df),
-            width="stretch",
-            hide_index=True,
-            height=620,
-        )
+        with st.container(key="distribution_only_preview"):
+            st.dataframe(
+                format_dataframe_for_ui(raw_df),
+                width="stretch",
+                hide_index=True,
+                height=620,
+            )
         with st.expander("İşlem Logları", expanded=False):
             for log_line in st.session_state.get("processing_logs", []):
                 st.code(log_line, language=None)
@@ -7790,7 +7798,7 @@ def render_analysis_panel(
         if output_bytes and not invoice_output_blocked:
             invoice_stem = Path(invoice_file).stem if invoice_file else INVOICE_UPLOAD_LABEL
             st.download_button(
-                f"{INVOICE_UPLOAD_LABEL} dosyas\u0131n\u0131 indir",
+                f"{INVOICE_UPLOAD_LABEL} Excel (.xlsx) dosyas\u0131n\u0131 indir",
                 data=output_bytes,
                 file_name=f"{invoice_stem} - {INVOICE_UPLOAD_LABEL}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -7799,12 +7807,13 @@ def render_analysis_panel(
                 on_click="ignore",
             )
         st.markdown("#### Bizim Kesti\u011fimiz 2 \u00d6nizleme")
-        st.dataframe(
-            format_dataframe_for_ui(raw_df),
-            width="stretch",
-            hide_index=True,
-            height=620,
-        )
+        with st.container(key="invoice_only_preview"):
+            st.dataframe(
+                format_dataframe_for_ui(raw_df),
+                width="stretch",
+                hide_index=True,
+                height=620,
+            )
         render_ges_consumption_difference_report_area(
             raw_df,
             output_bytes,
@@ -7912,7 +7921,7 @@ def render_analysis_panel(
                 else Path(os.path.normpath(root_folder)).name or "SKF"
             )
             st.download_button(
-                "📥 SKF Dosyasını İndir",
+                "Tam SKF Excel dosyasını (.xlsx) indir",
                 data=output_bytes,
                 file_name=f"{selected_folder_name} SKF.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -7924,12 +7933,13 @@ def render_analysis_panel(
         "değiştirmeden korur."
     )
     display_df = format_dataframe_for_ui(raw_df)
-    st.dataframe(
-        display_df,
-        width="stretch",
-        hide_index=True,
-        height=620,
-    )
+    with st.container(key="combined_results_preview"):
+        st.dataframe(
+            display_df,
+            width="stretch",
+            hide_index=True,
+            height=620,
+        )
     render_ges_consumption_difference_report_area(
         raw_df,
         output_bytes,
