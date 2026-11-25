@@ -11,7 +11,7 @@
 
 ## Güncel Proje Durumu — 25 Kasım 2026
 
-- **Sürüm ve giriş noktaları:** Uygulama sürümü `v1.3.9`; başlatıcı `run_app.py`,
+- **Sürüm ve giriş noktaları:** Uygulama sürümü `v1.3.10`; başlatıcı `run_app.py`,
   arayüz ve analiz akışı `06-Haziran/app.py`, fatura işleme ve Excel üretimi
   `06-Haziran/extract_and_compare.py` içindedir.
 - **Fatura işleme:** 21 EDAŞ bölgesinden `.xlsx`, `.xls`, `.xml` ve `.html`
@@ -27,6 +27,12 @@
   tek ZIP olarak yüklenir.
 - **Karşılaştırma görünümü:** Bizim kestiğimiz sütunlar `F2E6D9`, dağıtım sütunları
   `FCE4D6` dolgusu kullanır; fark sütunları ve uyuşmayan hücre vurguları korunur.
+- **Kimliksiz rapor toplamları:** ETSO ve müşteri bilgisi ikisi de olmayan satırlar,
+  tutar hücreleri dolu olsa bile kayıt sayılmaz; filtrelenen satır sayısı işlem
+  özetinde gösterilir.
+- **SEDAŞ Ekim 2026 kaynağı:** Sakarya Tarife ve AG/OG alanları yalnızca sırasıyla
+  `Tarife` ve `Bağlantı Tipi` başlıklarıyla eşleştirilir; sütun harfi veya benzer
+  başlık yedeği kullanılmaz. `UZ` ve boş Tarife kaynakta olduğu gibi korunur.
 
 Bu özet güncel uygulama durumunu verir; aşağıdaki tarihli sprint maddeleri tarihsel
 kayıt niteliğindedir.

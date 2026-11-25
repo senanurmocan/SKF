@@ -186,8 +186,9 @@ SATIR FİLTRELEME VE EŞİKLER
    sayılır ve atılır. ``abs`` kullanılmaz.
 3. Negatif dağıtım bedelleri kural gereği KORUNUR ve ``negative_count``
    sayacına girer; Akdeniz negatifleri de korunur.
-4. Bedel 0 olsa bile ETSO veya müşteri doluysa kayıt korunur. Yalnız bedel 0,
-   ETSO boş ve müşteri boş olan tamamen anlamsız satır atılır.
+4. ETSO ve müşteri ikisi de boşsa satır kayıt değildir ve atılır; bu,
+   kaynak raporların en altındaki kimliksiz toplam satırlarını da kapsar.
+   Bedel 0 olsa bile ETSO veya müşteri doluysa kayıt korunur.
 5. Yeşilırmak'ın 1 milyon TL üzeri/negatif değerleri ayrıca loglanır; yalnız
    log nedeniyle elenmez.
 
@@ -240,7 +241,7 @@ Varsayılan dönüş ``list[dict]``; ``return_stats=True`` dönüşü
 
 ``expected_region_count``, ``read_region_count``, ``successful_regions``,
 ``missing_regions``, ``processed_regions``, ``total_extracted``,
-``total_records``, ``zero_filtered``, ``negative_count``,
+``total_records``, ``zero_filtered``, ``unidentified_filtered``, ``negative_count``,
 ``akdeniz_filtered`` (tarihsel; normalde 0), ``absurd_filtered``,
 ``merged_duplicates``, ``discovered_files``, ``processed_files``,
 ``file_errors``, ``per_region_records``, ``notes_sheet``,
@@ -1234,8 +1235,8 @@ def resolve_column_indices(headers, region_mapping, sample_rows=None):
     """
     Header satırına göre sütun indekslerini dinamik olarak çözümler.
     1. Mapping dosyasında tanımlı başlık ismi eşleştirilir.
-    2. Eşleşmezse bilinen eş anlamlı başlıklar (FIELD_SYNONYMS) denenir.
-    3. Eşleşmezse sabit sütun harfi indeksine düşer.
+    2. İzin verilen alanlarda eşleşmezse sabit sütun ve eş anlamlı başlıklar denenir.
+       Sakarya Tarife ve AG/OG alanları yalnızca kendi başlıklarıyla çözümlenir.
     """
     fields = ['etso', 'musteri', 'tarife', 'ag_og', 'terim', 'güç_kw', 'kurulu_güç',
               'aktif_enerji', 'trafo_kaybı', 'dagitim_bedeli', 'güç_bedeli',
@@ -1247,7 +1248,10 @@ def resolve_column_indices(headers, region_mapping, sample_rows=None):
         if field not in fields:
             fields.append(field)
 
+    norm_reg = normalize_region_name(region_mapping.get('region_name', ''), to_format='reference')
     force_header_fields = set(region_mapping.get('rules', {}).get('force_header_fields', []))
+    if norm_reg == 'Sakarya EDAŞ':
+        force_header_fields.update({'tarife', 'ag_og'})
     if not headers:
         return {
             field: -1 if field in force_header_fields else region_mapping.get(f'{field}_index', -1)
@@ -1256,7 +1260,6 @@ def resolve_column_indices(headers, region_mapping, sample_rows=None):
 
     normalized_headers = [normalize_header(h) for h in headers]
     resolved = {}
-    norm_reg = normalize_region_name(region_mapping.get('region_name', ''), to_format='reference')
     normalized_cambibel = normalize_header('Çamlıbel EDAŞ')
 
     # Reuse static header mappings for repeated layouts within this analysis.
@@ -1885,7 +1888,7 @@ def read_excel_content(
 
 
 def filter_extracted_data(data, region_name=None):
-    """Alt başlık/boş/pozitif-absürt satırları ele; negatif bedelleri koru.
+    """Alt başlık/kimliksiz toplam/pozitif-absürt satırları ele; negatif bedelleri koru.
 
     10 milyar TL filtresi yalnız pozitif ``bedel > threshold`` kontrolüdür.
     Akdeniz dahil negatif kayıtlar Rule #2 gereği elenmez.
@@ -1895,6 +1898,7 @@ def filter_extracted_data(data, region_name=None):
     negative_bedel_count = 0
     akdeniz_negative_filtered = 0
     absurd_bedel_filtered = 0
+    unidentified_row_filtered = 0
 
     # Threshold for absurd bedel values - 10 billion TL
     BEDEL_THRESHOLD = 10_000_000_000.0
@@ -1948,14 +1952,31 @@ def filter_extracted_data(data, region_name=None):
             negative_bedel_count += 1
             # Do NOT skip - keep negative values
 
-        # bedel=0.0 AND etso=None AND customer=None (tamamen boş satırları) hariç tut
-        if bedel == 0.0 and (etso is None or str(etso).strip() == '') and (customer is None or str(customer).strip() == ''):
-            zero_bedel_filtered += 1
+        has_etso = etso is not None and str(etso).strip().casefold() not in {
+            '', 'none', 'null', 'nan', '-',
+        }
+        has_customer = customer is not None and str(customer).strip().casefold() not in {
+            '', 'none', 'null', 'nan', '-', 'bo\u015f',
+        }
+        # Summary/footer amounts without either account identity must not become
+        # a single blank-ETSO aggregate row in the final workbook.
+        if not has_etso and not has_customer:
+            if bedel == 0.0:
+                zero_bedel_filtered += 1
+            else:
+                unidentified_row_filtered += 1
             continue
 
         filtered_data.append(row)
 
-    return filtered_data, zero_bedel_filtered, negative_bedel_count, akdeniz_negative_filtered, absurd_bedel_filtered
+    return (
+        filtered_data,
+        zero_bedel_filtered,
+        negative_bedel_count,
+        akdeniz_negative_filtered,
+        absurd_bedel_filtered,
+        unidentified_row_filtered,
+    )
 
 
 def process_all_regions(base_path=None, mapping_file_path=None, status_callback=None, return_stats=False):
@@ -1980,6 +2001,7 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
     total_negative_bedel_count = 0
     total_akdeniz_filtered = 0
     total_absurd_bedel_filtered = 0
+    total_unidentified_row_filtered = 0
     total_discovered_files = 0
     total_processed_files = 0
     file_errors = []
@@ -2220,36 +2242,49 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         print(f"* {region}: {processed_count} satır çıkarıldı ({len(excel_files)} dosya)")
 
         # Per-region filtering
-        filtered_region_data, zero_bedel_filtered, negative_bedel_count, akdeniz_filtered, absurd_bedel_filtered = filter_extracted_data(region_all_data, region_name=region)
+        (
+            filtered_region_data,
+            zero_bedel_filtered,
+            negative_bedel_count,
+            akdeniz_filtered,
+            absurd_bedel_filtered,
+            unidentified_row_filtered,
+        ) = filter_extracted_data(region_all_data, region_name=region)
 
         all_data.extend(filtered_region_data)
         per_region_records[region] = len(filtered_region_data)
 
         # Per-region statistics
         if zero_bedel_filtered > 0:
-            print(f"  -> {region}: {zero_bedel_filtered} records filtered (bedel=0.0 AND customer=None)")
+            print(f"  -> {region}: {zero_bedel_filtered} rows filtered (bedel=0.0, no ETSO/customer)")
         if negative_bedel_count > 0:
             print(f"  -> {region}: {negative_bedel_count} negative bedel kaydı (Rule #2)")
         if akdeniz_filtered > 0:
             print(f"  -> {region}: {akdeniz_filtered} negative distribution bedel values filtered")
         if absurd_bedel_filtered > 0:
             print(f"  -> {region}: {absurd_bedel_filtered} absurd bedel values filtered (>10B TL)")
+        if unidentified_row_filtered > 0:
+            print(f"  -> {region}: {unidentified_row_filtered} unidentified summary rows filtered")
 
         total_zero_bedel_filtered += zero_bedel_filtered
         total_negative_bedel_count += negative_bedel_count
         total_akdeniz_filtered += akdeniz_filtered
         total_absurd_bedel_filtered += absurd_bedel_filtered
+        total_unidentified_row_filtered += unidentified_row_filtered
 
     print(f"\nINFO: {total_negative_bedel_count} negatif bedel kaydı extraction'da var ve Rule #2 gereği korunuyor")
 
     if total_zero_bedel_filtered > 0:
-        print(f"\nWARNING: {total_zero_bedel_filtered} records filtered (bedel=0.0 AND customer=None)")
+        print(f"\nWARNING: {total_zero_bedel_filtered} rows filtered (bedel=0.0, no ETSO/customer)")
 
     if total_akdeniz_filtered > 0:
         print(f"\nINFO: {total_akdeniz_filtered} negative distribution bedel values filtered for Akdeniz EDAŞ")
 
     if total_absurd_bedel_filtered > 0:
         print(f"\nINFO: {total_absurd_bedel_filtered} absurd bedel values filtered (>10B TL - corrupted data)")
+
+    if total_unidentified_row_filtered > 0:
+        print(f"\nINFO: {total_unidentified_row_filtered} unidentified summary rows filtered")
 
     # ETSO Aggregation: Notlar 3 #1, #2, #3
     # Aynı ETSO koduna sahip kayıtları topla (bölge bazında)
@@ -2392,7 +2427,9 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         normalized_tariff = canonical_tariff_category(source_tariff)
         if normalized_tariff is None:
             record_category_validation_issue(reg_name, 'Tarife Grubu', source_tariff)
-            rec['Tarife Grubu'] = ''
+            # Keep the source label visible for review; unknown labels still
+            # cannot silently match one of the supported tariff categories.
+            rec['Tarife Grubu'] = str(source_tariff).strip() if source_tariff is not None else ''
         else:
             rec['Tarife Grubu'] = normalized_tariff
 
@@ -2400,7 +2437,7 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         normalized_ag_og = canonical_ag_og_category(source_ag_og)
         if normalized_ag_og is None:
             record_category_validation_issue(reg_name, 'AG OG', source_ag_og)
-            rec['AG OG'] = ''
+            rec['AG OG'] = str(source_ag_og).strip() if source_ag_og is not None else ''
         else:
             rec['AG OG'] = normalized_ag_og
 
@@ -2553,6 +2590,7 @@ def process_all_regions(base_path=None, mapping_file_path=None, status_callback=
         'negative_count': total_negative_bedel_count,
         'akdeniz_filtered': total_akdeniz_filtered,
         'absurd_filtered': total_absurd_bedel_filtered,
+        'unidentified_filtered': total_unidentified_row_filtered,
         'merged_duplicates': aggregation_count,
         'discovered_files': total_discovered_files,
         'processed_files': total_processed_files,
