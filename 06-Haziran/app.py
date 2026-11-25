@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "v1.3.8"
+APP_VERSION = "v1.3.9"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
@@ -758,6 +758,26 @@ def inject_corporate_css() -> None:
             border-color: var(--ck-blue);
             color: var(--ck-blue);
             transform: translateY(-1px);
+        }
+        div[class*="st-key-clear_upload_"] div.stButton > button {
+            box-sizing: border-box;
+            width: 1.7rem !important;
+            min-width: 1.7rem !important;
+            height: 1.7rem !important;
+            min-height: 1.7rem !important;
+            padding: 0 !important;
+            justify-content: center;
+            border: 1px solid var(--ck-border) !important;
+            border-radius: 50% !important;
+            background: var(--ck-surface) !important;
+            color: #A33B3B !important;
+            font-size: 1.15rem !important;
+            line-height: 1;
+        }
+        div[class*="st-key-clear_upload_"] div.stButton > button:hover {
+            border-color: #A33B3B !important;
+            background: #FCECEC !important;
+            color: #8E2424 !important;
         }
         div.stButton > button[kind="primary"], div.stDownloadButton > button {
             background: #305496;
@@ -6988,6 +7008,75 @@ def synchronize_browser_excel_upload(
     )
 
 
+def clear_upload_selection(
+    selected_key: str,
+    category: str | None,
+    manual_key: str | None,
+    browser_upload: bool,
+    reset_to_default: bool,
+    forget_system_usage_preference: bool,
+    invalidate_analysis: bool,
+) -> None:
+    """Clear a selected path and, for browser uploads, its staged copy."""
+    if browser_upload and category:
+        generation_key = f"_upload_generation_{category}"
+        generation = int(st.session_state.get(generation_key, 0))
+        st.session_state[generation_key] = generation + 1
+        st.session_state[f"_upload_identity_{category}"] = None
+        st.session_state[f"_upload_error_{category}"] = ""
+        workspace = st.session_state.get("_upload_workspace")
+        if isinstance(workspace, UploadWorkspace):
+            workspace.clear(category)
+
+    selected_value = str(SYSTEM_USAGE_FILE_DEFAULT) if reset_to_default else ""
+    st.session_state[selected_key] = selected_value
+    if manual_key:
+        st.session_state[manual_key] = selected_value
+    if forget_system_usage_preference:
+        save_system_usage_file_selection("")
+    if category == "distribution":
+        st.session_state["browser_distribution_label"] = "SKF"
+    if invalidate_analysis:
+        clear_analysis_state()
+
+
+def render_upload_clear_button(
+    container: Any,
+    *,
+    key: str,
+    selected: bool,
+    selected_key: str,
+    category: str | None = None,
+    manual_key: str | None = None,
+    browser_upload: bool = False,
+    reset_to_default: bool = False,
+    forget_system_usage_preference: bool = False,
+    invalidate_analysis: bool = True,
+    default_selected: bool = False,
+) -> None:
+    if selected and not default_selected:
+        container.button(
+            "×",
+            key=key,
+            help="Seçilen dosyayı kaldır",
+            on_click=clear_upload_selection,
+            args=(
+                selected_key,
+                category,
+                manual_key,
+                browser_upload,
+                reset_to_default,
+                forget_system_usage_preference,
+                invalidate_analysis,
+            ),
+            width="content",
+        )
+    elif default_selected:
+        render_selection_check(container, True)
+    else:
+        container.empty()
+
+
 def render_browser_excel_picker(
     label: str,
     *,
@@ -7000,7 +7089,12 @@ def render_browser_excel_picker(
 ) -> str:
     generation = st.session_state.get(f"_upload_generation_{category}", 0)
     widget_key = f"browser_upload_{category}_{generation}"
-    upload_shell = container.container(key=f"browser_upload_shell_{category}")
+    upload_column, clear_column = container.columns(
+        [9, 1],
+        gap="small",
+        vertical_alignment="center",
+    )
+    upload_shell = upload_column.container(key=f"browser_upload_shell_{category}")
     uploaded = upload_shell.file_uploader(
         label,
         type=file_types or ["xlsx", "xlsm", "xls"],
@@ -7017,17 +7111,33 @@ def render_browser_excel_picker(
         selected_key=selected_key,
         invalidate_analysis=invalidate_analysis,
     )
+    render_upload_clear_button(
+        clear_column,
+        key=f"clear_upload_{category}",
+        selected=bool(path),
+        selected_key=selected_key,
+        category=category,
+        browser_upload=True,
+        invalidate_analysis=category != "ges_production",
+    )
     if error_message := st.session_state.get(f"_upload_error_{category}"):
         container.error(error_message)
     return path
 
 
 def render_browser_sidebar_inputs() -> tuple[str, str, str]:
-    upload_shell = st.sidebar.container(key="browser_upload_shell_distribution")
+    generation = st.session_state.get("_upload_generation_distribution", 0)
+    widget_key = f"browser_upload_distribution_{generation}"
+    upload_column, clear_column = st.sidebar.columns(
+        [9, 1],
+        gap="small",
+        vertical_alignment="center",
+    )
+    upload_shell = upload_column.container(key="browser_upload_shell_distribution")
     uploaded_zip = upload_shell.file_uploader(
         "📁 Dağıtım Şirketi SKF",
         type=["zip"],
-        key="browser_upload_distribution_zip",
+        key=widget_key,
         max_upload_size=200,
         help="Bölge klasörlerinin yapısını tek bir ZIP dosyasında koruyarak yükleyin.",
         label_visibility="collapsed",
@@ -7039,6 +7149,15 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         category="distribution",
         selected_key="selected_root_folder",
         kind=kind,
+    )
+    render_upload_clear_button(
+        clear_column,
+        key="clear_upload_distribution",
+        selected=bool(root_folder),
+        selected_key="selected_root_folder",
+        category="distribution",
+        manual_key="manual_selected_root_folder",
+        browser_upload=True,
     )
     if error_message := st.session_state.get("_upload_error_distribution"):
         st.sidebar.error(error_message)
@@ -7077,7 +7196,13 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             key="select_distribution_folder",
         )
     with folder_status:
-        render_selection_check(folder_status, bool(root_folder and os.path.isdir(root_folder)))
+        render_upload_clear_button(
+            folder_status,
+            key="clear_upload_distribution",
+            selected=bool(root_folder),
+            selected_key="selected_root_folder",
+            manual_key="manual_selected_root_folder",
+        )
 
     if select_folder:
         selected_folder = select_folder_via_dialog(
@@ -7100,7 +7225,13 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
         )
     invoice_file = st.session_state.get("selected_invoice_file", "").strip()
     with invoice_status:
-        render_selection_check(invoice_status, bool(invoice_file and os.path.isfile(invoice_file)))
+        render_upload_clear_button(
+            invoice_status,
+            key="clear_upload_invoice",
+            selected=bool(invoice_file),
+            selected_key="selected_invoice_file",
+            manual_key="manual_selected_invoice_file",
+        )
 
     if select_invoice:
         selected_file = select_excel_file_via_dialog(
@@ -7123,9 +7254,12 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             help="Sayaç ID → EIC ve müşteri eşleştirmesi için Kesin Liste Excel dosyasını seçin.",
         )
     with eno_status:
-        render_selection_check(
+        render_upload_clear_button(
             eno_status,
-            bool(selected_eno_file and os.path.isfile(selected_eno_file)),
+            key="clear_upload_eno",
+            selected=bool(selected_eno_file),
+            selected_key="selected_eno_file",
+            manual_key="manual_selected_eno_file",
         )
     render_reconciliation_consumption_file_picker()
     render_ges_production_file_picker()
@@ -7215,9 +7349,12 @@ def render_ges_production_file_picker() -> None:
                 width="stretch",
             )
         with status_column:
-            render_selection_check(
+            render_upload_clear_button(
                 status_column,
-                bool(selected_file and os.path.isfile(selected_file)),
+                key="clear_upload_ges_production",
+                selected=bool(selected_file),
+                selected_key="selected_ges_production_file",
+                invalidate_analysis=False,
             )
 
         if select_file:
@@ -7347,6 +7484,13 @@ def render_system_usage_file_picker() -> None:
         )
         return
     selected_file = st.session_state.get("selected_system_usage_file", "")
+    default_path = os.path.normcase(
+        os.path.abspath(str(SYSTEM_USAGE_FILE_DEFAULT))
+    )
+    default_selected = bool(
+        selected_file
+        and os.path.normcase(os.path.abspath(selected_file)) == default_path
+    )
     spacer, label_column, button_column, status_column = st.columns(
         [4, 2.8, 1.1, 0.8],
         gap="small",
@@ -7362,9 +7506,14 @@ def render_system_usage_file_picker() -> None:
             width="content",
         )
     with status_column:
-        render_selection_check(
+        render_upload_clear_button(
             status_column,
-            bool(selected_file and os.path.isfile(selected_file)),
+            key="clear_upload_system_usage",
+            selected=bool(selected_file),
+            selected_key="selected_system_usage_file",
+            reset_to_default=True,
+            forget_system_usage_preference=True,
+            default_selected=default_selected and os.path.isfile(selected_file),
         )
 
     if select_system_usage:
@@ -7420,9 +7569,11 @@ def render_reconciliation_consumption_file_picker() -> None:
             width="stretch",
         )
     with status_column:
-        render_selection_check(
+        render_upload_clear_button(
             status_column,
-            bool(selected_file and os.path.isfile(selected_file)),
+            key="clear_upload_reconciliation",
+            selected=bool(selected_file),
+            selected_key="selected_reconciliation_consumption_file",
         )
 
     if select_reconciliation_file:
