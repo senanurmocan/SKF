@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "v1.3.6"
+APP_VERSION = "v1.3.7"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
@@ -1920,6 +1920,17 @@ def add_region_invoice_summary_worksheet(
     for field_key, definition in configured_fields.items():
         source_header_key = _normalize_tariff_lookup_key(definition["source_header"])
         matches = source_header_columns.get(source_header_key, [])
+        if (
+            not matches
+            and field_key == _normalize_tariff_lookup_key("Tarife Grubu")
+            and source_header_key == _normalize_tariff_lookup_key("Fatura Abone Grubu2")
+        ):
+            # Some regional exports omit the duplicate-header suffix used by
+            # the mapping workbook for this same subscription-group field.
+            matches = source_header_columns.get(
+                _normalize_tariff_lookup_key("Fatura Abone Grubu"),
+                [],
+            )
         if matches:
             # Match on the source header text. Column letters in the mapping
             # workbook are ignored so reordered source columns still resolve.
@@ -3705,8 +3716,13 @@ def load_ges_production_by_etso(file_path: str) -> dict[str, float | None]:
 def load_invoice_consumption_by_etso(
     output_bytes: bytes | None,
     invoice_sources: list[dict[str, Any]],
+    *,
+    invoice_file: str | None = None,
 ) -> dict[str, float | None]:
-    """Aggregate the generated invoice comparison sheets by ETSO."""
+    """Read selected invoice consumption, then fall back to generated sheets."""
+    source_consumption = load_selected_invoice_consumption_by_etso(invoice_file)
+    if source_consumption is not None:
+        return source_consumption
     if not output_bytes:
         return {}
 
@@ -3790,6 +3806,126 @@ def _optional_identifier_text(value: Any) -> str | None:
     return text if text and text.casefold() not in {"nan", "none", "-"} else None
 
 
+def load_selected_invoice_consumption_by_etso(
+    file_path: str | None,
+) -> dict[str, float | None] | None:
+    """Read regional-summary invoice consumption by ETSO from the source workbook."""
+    if not file_path or not os.path.isfile(file_path):
+        return None
+
+    extension = Path(file_path).suffix.casefold()
+    if extension not in {".xlsx", ".xlsm", ".xls"}:
+        return None
+
+    consumption_by_etso: dict[str, float | None] = {}
+    found_headers = False
+    etso_header_keys = tuple(
+        _normalize_tariff_lookup_key(alias)
+        for alias in ("ETSO", "ETSO Kodu", "ETSO KODU")
+    )
+    consumption_header_keys = tuple(
+        _normalize_tariff_lookup_key(alias)
+        for alias in ("Toplam Kwh", "Aktif Enerji Tüketim (kWh)")
+    )
+
+    def resolve_columns(values: Any) -> tuple[int, int] | None:
+        columns = {
+            _normalize_tariff_lookup_key(value): index
+            for index, value in enumerate(values, start=1)
+            if value is not None
+        }
+        etso_column = next(
+            (columns[key] for key in etso_header_keys if key in columns),
+            None,
+        )
+        consumption_column = next(
+            (columns[key] for key in consumption_header_keys if key in columns),
+            None,
+        )
+        if etso_column is None or consumption_column is None:
+            return None
+        return etso_column, consumption_column
+
+    def add_row(etso_value: Any, consumption_value: Any) -> None:
+        code = reconciliation_etso_key(etso_value)
+        if code:
+            _add_optional_consumption_aggregate(
+                consumption_by_etso,
+                code,
+                _optional_consumption_number(consumption_value),
+            )
+
+    if extension in {".xlsx", ".xlsm"}:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(
+            file_path,
+            read_only=True,
+            data_only=True,
+            keep_vba=extension == ".xlsm",
+        )
+        try:
+            for worksheet in workbook.worksheets:
+                header_row_index = None
+                columns: tuple[int, int] | None = None
+                for row_index, row in enumerate(
+                    worksheet.iter_rows(max_row=min(worksheet.max_row or 1, 20), values_only=True),
+                    start=1,
+                ):
+                    columns = resolve_columns(row)
+                    if columns is not None:
+                        header_row_index = row_index
+                        found_headers = True
+                        break
+                if header_row_index is None or columns is None:
+                    continue
+
+                first_column = min(columns)
+                last_column = max(columns)
+                etso_offset = columns[0] - first_column
+                consumption_offset = columns[1] - first_column
+                for row in worksheet.iter_rows(
+                    min_row=header_row_index + 1,
+                    min_col=first_column,
+                    max_col=last_column,
+                    values_only=True,
+                ):
+                    add_row(
+                        row[etso_offset] if etso_offset < len(row) else None,
+                        row[consumption_offset] if consumption_offset < len(row) else None,
+                    )
+        finally:
+            workbook.close()
+    else:
+        import xlrd
+
+        workbook = xlrd.open_workbook(file_path, on_demand=True)
+        try:
+            for worksheet in workbook.sheets():
+                header_row_index = None
+                columns = None
+                for row_index in range(min(worksheet.nrows, 20)):
+                    columns = resolve_columns(
+                        worksheet.cell_value(row_index, column_index)
+                        for column_index in range(worksheet.ncols)
+                    )
+                    if columns is not None:
+                        header_row_index = row_index
+                        found_headers = True
+                        break
+                if header_row_index is None or columns is None:
+                    continue
+                for row_index in range(header_row_index + 1, worksheet.nrows):
+                    add_row(
+                        worksheet.cell_value(row_index, columns[0] - 1),
+                        worksheet.cell_value(row_index, columns[1] - 1),
+                    )
+        finally:
+            workbook.release_resources()
+
+    return consumption_by_etso if found_headers else None
+
+
 def load_invoice_tariff_by_etso(file_path: str | None) -> dict[str, str]:
     """Read the tariff group directly from the selected own-invoice workbook."""
     if not file_path:
@@ -3807,6 +3943,15 @@ def load_invoice_tariff_by_etso(file_path: str | None) -> dict[str, str]:
             for index, value in enumerate(values, start=1)
             if value is not None
         }
+
+    tariff_header_aliases = (
+        "Tarife Grubu",
+        "Fatura Abone Grubu2",
+        "Fatura Abone Grubu",
+    )
+    tariff_header_keys = tuple(
+        _normalize_tariff_lookup_key(alias) for alias in tariff_header_aliases
+    )
 
     def add_row(etso_value: Any, tariff_value: Any) -> None:
         code = reconciliation_etso_key(etso_value)
@@ -3836,7 +3981,10 @@ def load_invoice_tariff_by_etso(file_path: str | None) -> dict[str, str]:
                         (candidate_columns[key] for key in ("etso", "etsokodu") if key in candidate_columns),
                         None,
                     )
-                    tariff_column = candidate_columns.get(_normalize_tariff_lookup_key("Tarife Grubu"))
+                    tariff_column = next(
+                        (candidate_columns[key] for key in tariff_header_keys if key in candidate_columns),
+                        None,
+                    )
                     if etso_column is not None and tariff_column is not None:
                         header_row_index = row_index
                         columns = {"etso": etso_column, "tariff": tariff_column}
@@ -3878,7 +4026,10 @@ def load_invoice_tariff_by_etso(file_path: str | None) -> dict[str, str]:
                         (candidate_columns[key] for key in ("etso", "etsokodu") if key in candidate_columns),
                         None,
                     )
-                    tariff_column = candidate_columns.get(_normalize_tariff_lookup_key("Tarife Grubu"))
+                    tariff_column = next(
+                        (candidate_columns[key] for key in tariff_header_keys if key in candidate_columns),
+                        None,
+                    )
                     if etso_column is not None and tariff_column is not None:
                         header_row_index = row_index
                         columns = {"etso": etso_column - 1, "tariff": tariff_column - 1}
@@ -3909,6 +4060,7 @@ def load_ges_comparison_source_maps(
     invoice_only_mode: bool,
     reconciliation_source_values: dict[str, float | None] | None = None,
     invoice_tariff_by_etso: dict[str, str] | None = None,
+    invoice_consumption_by_etso: dict[str, float | None] | None = None,
 ) -> tuple[
     dict[str, float | None],
     dict[str, float | None],
@@ -3919,7 +4071,11 @@ def load_ges_comparison_source_maps(
     dict[str, str],
 ]:
     """Collect GES report inputs with one pass over the generated workbook."""
-    invoice_by_etso: dict[str, float | None] = {}
+    invoice_by_etso: dict[str, float | None] = (
+        invoice_consumption_by_etso.copy()
+        if invoice_consumption_by_etso is not None
+        else {}
+    )
     distribution_by_etso: dict[str, float | None] = {}
     reconciliation_by_etso: dict[str, float | None] = {}
     customer_by_etso: dict[str, str] = {}
@@ -4059,7 +4215,7 @@ def load_ges_comparison_source_maps(
                         add_text_value(customer_by_etso, code, row[customer_column - 1] if len(row) >= customer_column else None)
                     if tariff_column is not None:
                         add_text_value(tariff_group_by_etso, code, row[tariff_column - 1] if len(row) >= tariff_column else None)
-                    if energy_column is not None:
+                    if energy_column is not None and invoice_consumption_by_etso is None:
                         _add_optional_consumption_aggregate(
                             invoice_by_etso,
                             code,
@@ -4613,6 +4769,11 @@ def render_ges_consumption_difference_report_area(
                         ),
                         None,
                     )
+                source_invoice_consumption_by_etso = load_invoice_consumption_by_etso(
+                    report_bytes,
+                    report_sources,
+                    invoice_file=invoice_file,
+                )
                 invoice_tariff_by_etso = load_invoice_tariff_by_etso(invoice_file)
                 (
                     invoice_consumption_by_etso,
@@ -4629,6 +4790,7 @@ def render_ges_consumption_difference_report_area(
                     invoice_only_mode=invoice_only_mode,
                     reconciliation_source_values=source_reconciliation,
                     invoice_tariff_by_etso=invoice_tariff_by_etso,
+                    invoice_consumption_by_etso=source_invoice_consumption_by_etso,
                 )
                 rows = build_ges_consumption_difference_rows(
                     production_by_etso,
