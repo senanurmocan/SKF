@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "v1.3.9"
+APP_VERSION = "v1.3.8"
 SYSTEM_USAGE_FILE_DEFAULT = BASE_DIR / "_PortalAdmin_Uploads_Content_FastAccess_0bd2da5220923.xlsx"
 SYSTEM_USAGE_FILE_PREFERENCE = BASE_DIR / "config" / "system_usage_file.json"
 LOCAL_PACKAGE_DOWNLOAD_URL = (
@@ -47,6 +47,7 @@ from extract_and_compare import (  # noqa: E402
     process_all_regions,
     save_to_excel,
 )
+from core.csv_reader import iter_csv_rows  # noqa: E402
 from core.upload_inputs import UploadInputError, UploadWorkspace  # noqa: E402
 
 
@@ -938,8 +939,10 @@ def select_folder_via_dialog(dialog_title: str) -> str | None:
 def select_excel_file_via_dialog(
     dialog_title: str,
     initial_path: str | None = None,
+    *,
+    allow_csv: bool = False,
 ) -> str | None:
-    """Open a local Excel picker, optionally starting at a provided workbook."""
+    """Open a local workbook picker, optionally including CSV files."""
     dialog_root = None
     try:
         import tkinter as tk
@@ -958,7 +961,9 @@ def select_excel_file_via_dialog(
         selected = filedialog.askopenfilename(
             master=dialog_root,
             title=dialog_title,
-            filetypes=[
+            filetypes=(
+                [("Excel and CSV files", "*.xlsx *.xlsm *.xls *.csv")] if allow_csv else []
+            ) + [
                 ("Excel dosyaları", "*.xlsx *.xlsm *.xls"),
                 ("Tüm dosyalar", "*.*"),
             ],
@@ -2374,7 +2379,7 @@ def append_selected_invoice_file(
         return output_bytes, [], [f"Se\u00e7ilen Excel dosyas\u0131 bulunamad\u0131: {file_path}"], 0
 
     extension = Path(file_path).suffix.casefold()
-    if extension not in {".xlsx", ".xlsm", ".xls"}:
+    if extension not in {".xlsx", ".xlsm", ".xls", ".csv"}:
         return output_bytes, [], [f"Desteklenmeyen Excel dosya t\u00fcr\u00fc: {Path(file_path).name}"], 0
 
     from copy import copy
@@ -2517,7 +2522,7 @@ def append_selected_invoice_file(
                     **comparison_stats,
                     "tariff_rate_error": tariff_rate_error if not is_region_summary else None,
                 })
-        else:
+        elif extension == ".xls":
             import xlrd
 
             source_workbook = xlrd.open_workbook(file_path, on_demand=True)
@@ -2597,6 +2602,94 @@ def append_selected_invoice_file(
                     **comparison_stats,
                     "tariff_rate_error": tariff_rate_error if not is_region_summary else None,
                 })
+
+        else:
+            from itertools import chain
+
+            csv_rows = iter_csv_rows(file_path)
+            header_row = next(csv_rows, None)
+            invoice_format = detect_our_invoice_format(header_row or ())
+            if invoice_format is None:
+                return output_bytes, [], [
+                    f"{Path(file_path).name}: CSV başlıkları desteklenen fatura biçimleriyle eşleşmedi."
+                ], 0
+
+            base_title = OUR_INVOICES_LABEL
+            title = base_title[:31]
+            unique_title = title
+            suffix = 2
+            while unique_title in report_workbook.sheetnames:
+                suffix_text = f" {suffix}"
+                unique_title = f"{base_title[:31 - len(suffix_text)]}{suffix_text}"
+                suffix += 1
+            target_sheet = report_workbook.create_sheet(unique_title)
+            numeric_csv_headers = {
+                "aktifenerjituketimkwh",
+                "toplamkwh",
+                "dagitimbedelitl",
+                "toplamdagitimbedeli",
+                "faturatutari",
+                "gucbedelitl",
+                "gucasimbedelitl",
+                "reaktifbedeltl",
+                "reaktifbedelitl",
+                "ilkreaktif",
+                "tukguc",
+                "kuruluguc",
+                "sozlesmegucu",
+            }
+            numeric_csv_columns = {
+                index
+                for index, value in enumerate(header_row or (), start=1)
+                if _normalize_tariff_lookup_key(value) in numeric_csv_headers
+            }
+            for row_index, row in enumerate(chain((header_row,), csv_rows), start=1):
+                for column_index, value in enumerate(row, start=1):
+                    if value != "":
+                        if (
+                            row_index > 1
+                            and column_index in numeric_csv_columns
+                            and is_numeric_text(value)
+                            and str(value).strip() not in {"-", "–", "—"}
+                        ):
+                            value = safe_float(value)
+                        target_sheet.cell(row_index, column_index, value)
+
+            is_region_summary = invoice_format == "region_summary"
+            if is_region_summary:
+                calculation_stats = {
+                    "calculated_distribution_amount_count": 0,
+                    "missing_distribution_rate_count": 0,
+                    "distribution_amount_warning": None,
+                }
+                comparison_stats = add_region_invoice_summary_worksheet(
+                    report_workbook,
+                    target_sheet,
+                    "Bizim Kestiğimiz 2",
+                    mapping_path,
+                )
+            else:
+                calculation_stats = add_expected_distribution_charge_column(
+                    target_sheet,
+                    tariff_rates,
+                )
+                comparison_stats = add_our_invoice_comparison_worksheet(
+                    report_workbook,
+                    target_sheet,
+                    "Bizim Kestiğimiz 2",
+                    tariff_rates,
+                    tariff_layout,
+                    power_rate_error,
+                )
+            imported_sheets.append({
+                "file_path": file_path,
+                "source_sheet_name": Path(file_path).stem,
+                "output_sheet_name": unique_title,
+                "invoice_format": invoice_format,
+                **calculation_stats,
+                **comparison_stats,
+                "tariff_rate_error": tariff_rate_error if not is_region_summary else None,
+            })
 
         comparison_error = next(
             (source.get("comparison_sheet_warning") for source in imported_sheets if source.get("comparison_sheet_warning")),
@@ -3013,6 +3106,70 @@ def load_reconciliation_consumption_by_etso(
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Aggregate eligible meter consumption by ETSO, converting MWh to kWh."""
     extension = Path(file_path).suffix.casefold()
+    if extension == ".csv":
+        rows = iter_csv_rows(file_path)
+        columns: dict[str, int] = {}
+        for row_index, row in enumerate(rows, start=1):
+            if row_index > 12:
+                break
+            normalized = {
+                _normalize_tariff_lookup_key(value): column_index
+                for column_index, value in enumerate(row)
+                if value not in (None, "")
+            }
+            etso_column = normalized.get("sayacetso")
+            consumption_column = normalized.get("kayiplicekismwh")
+            if etso_column is not None and consumption_column is not None:
+                columns = {"etso": etso_column, "consumption": consumption_column}
+                draw_column = normalized.get("cekisorg")
+                status_column = next(
+                    (
+                        column_index
+                        for header, column_index in normalized.items()
+                        if "fatura" in header and "durum" in header
+                    ),
+                    None,
+                )
+                if draw_column is not None:
+                    columns["draw"] = draw_column
+                if status_column is not None:
+                    columns["status"] = status_column
+                break
+        if not columns:
+            raise ValueError("CSV\u0027de Saya\u00e7 ETSO ve Kay\u0131pl\u0131 \u00c7eki\u015f (MWh) ba\u015fl\u0131klar\u0131 bulunamad\u0131.")
+
+        aggregates_mwh: dict[str, float] = {}
+        statuses_by_etso: dict[str, list[str]] = {}
+        source_row_count = 0
+        for row in rows:
+            code = reconciliation_etso_key(row[columns["etso"]] if len(row) > columns["etso"] else None)
+            if not code:
+                continue
+            if "status" in columns:
+                raw_status = row[columns["status"]] if len(row) > columns["status"] else None
+                status = str(raw_status).strip() if raw_status is not None else ""
+                if status.casefold() in {"", "-", "\u2013", "\u2014", "#n/a", "n/a", "none"}:
+                    status = "-"
+                statuses = statuses_by_etso.setdefault(code, [])
+                if status not in statuses:
+                    statuses.append(status)
+            if "draw" in columns:
+                draw_value = row[columns["draw"]] if len(row) > columns["draw"] else None
+                if _normalize_tariff_lookup_key(draw_value) != "evet":
+                    continue
+            amount = row[columns["consumption"]] if len(row) > columns["consumption"] else None
+            aggregates_mwh[code] = aggregates_mwh.get(code, 0.0) + safe_float(amount)
+            source_row_count += 1
+        stats: dict[str, Any] = {
+            "reconciliation_consumption_source_row_count": source_row_count,
+            "reconciliation_consumption_etso_count": len(aggregates_mwh),
+        }
+        if "status" in columns:
+            stats["_reconciliation_consumption_status_by_etso"] = {
+                code: " / ".join(statuses) if statuses else "-"
+                for code, statuses in statuses_by_etso.items()
+            }
+        return {code: value * 1000 for code, value in aggregates_mwh.items()}, stats
     if extension not in {".xlsx", ".xlsm", ".xls"}:
         raise ValueError("Uzlaştırma dosyası desteklenmeyen bir Excel biçiminde.")
 
@@ -3695,8 +3852,28 @@ def _add_optional_consumption_aggregate(
 
 def load_ges_production_by_etso(file_path: str) -> dict[str, float | None]:
     """Read ETSO and supplier production from the LUM workbook's G and L columns."""
-    if Path(file_path).suffix.casefold() != ".xlsx":
-        raise ValueError("GES üretimi için .xlsx biçiminde bir dosya seçin.")
+    extension = Path(file_path).suffix.casefold()
+    if extension == ".csv":
+        production_by_etso: dict[str, float | None] = {}
+        header_row_index = None
+        for row_index, row in enumerate(iter_csv_rows(file_path), start=1):
+            if header_row_index is None and row_index <= 12:
+                etso_header = _normalize_tariff_lookup_key(row[6] if len(row) > 6 else None)
+                quantity_header = _normalize_tariff_lookup_key(row[11] if len(row) > 11 else None)
+                if etso_header == "etsokodu" and quantity_header == "tedarikcimiktarkwh":
+                    header_row_index = row_index
+                continue
+            if header_row_index is None:
+                continue
+            code = reconciliation_etso_key(row[6] if len(row) > 6 else None)
+            amount = _optional_consumption_number(row[11] if len(row) > 11 else None)
+            if code:
+                _add_optional_consumption_aggregate(production_by_etso, code, amount)
+        if header_row_index is None:
+            raise ValueError("CSV dosyas\u0131nda G/L ba\u015fl\u0131klar\u0131 bulunamad\u0131.")
+        return production_by_etso
+    if extension != ".xlsx":
+        raise ValueError("GES \u00fcretimi i\u00e7in .xlsx veya .csv bi\u00e7iminde bir dosya se\u00e7in.")
 
     from openpyxl import load_workbook
 
@@ -3841,7 +4018,7 @@ def load_selected_invoice_consumption_by_etso(
         return None
 
     extension = Path(file_path).suffix.casefold()
-    if extension not in {".xlsx", ".xlsm", ".xls"}:
+    if extension not in {".xlsx", ".xlsm", ".xls", ".csv"}:
         return None
 
     consumption_by_etso: dict[str, float | None] = {}
@@ -3923,6 +4100,22 @@ def load_selected_invoice_consumption_by_etso(
                     )
         finally:
             workbook.close()
+    elif extension == ".csv":
+        header_row_index = None
+        columns = None
+        for row_index, row in enumerate(iter_csv_rows(file_path), start=1):
+            if header_row_index is None:
+                if row_index > 20:
+                    break
+                columns = resolve_columns(row)
+                if columns is not None:
+                    header_row_index = row_index
+                    found_headers = True
+                continue
+            add_row(
+                row[columns[0] - 1] if len(row) >= columns[0] else None,
+                row[columns[1] - 1] if len(row) >= columns[1] else None,
+            )
     else:
         import xlrd
 
@@ -4071,6 +4264,33 @@ def load_invoice_tariff_by_etso(file_path: str | None) -> dict[str, str]:
                     )
         finally:
             workbook.release_resources()
+    elif extension == ".csv":
+        header_row_index = None
+        columns: dict[str, int] = {}
+        rows = iter_csv_rows(file_path)
+        for row_index, row in enumerate(rows, start=1):
+            if row_index > 20:
+                break
+            candidate_columns = header_columns(row)
+            etso_column = next(
+                (candidate_columns[key] for key in ("etso", "etsokodu") if key in candidate_columns),
+                None,
+            )
+            tariff_column = next(
+                (candidate_columns[key] for key in tariff_header_keys if key in candidate_columns),
+                None,
+            )
+            if etso_column is not None and tariff_column is not None:
+                header_row_index = row_index
+                columns = {"etso": etso_column - 1, "tariff": tariff_column - 1}
+                found_headers = True
+                break
+        if header_row_index is not None:
+            for row in rows:
+                add_row(
+                    row[columns["etso"]] if len(row) > columns["etso"] else None,
+                    row[columns["tariff"]] if len(row) > columns["tariff"] else None,
+                )
     else:
         raise ValueError("Bizim Kesti\u011fimiz Faturalar dosyas\u0131 Excel bi\u00e7iminde olmal\u0131d\u0131r.")
 
@@ -7172,6 +7392,7 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         category="invoice",
         selected_key="selected_invoice_file",
         container=st.sidebar,
+        file_types=["xlsx", "xlsm", "xls", "csv"],
         invalidate_analysis=False,
     )
     selected_eno_file = render_browser_excel_picker(
@@ -7179,7 +7400,8 @@ def render_browser_sidebar_inputs() -> tuple[str, str, str]:
         category="eno",
         selected_key="selected_eno_file",
         container=st.sidebar,
-        help="Sayaç ID → EIC ve müşteri eşleştirmesi için Excel dosyasını seçin.",
+        file_types=["xlsx", "xlsm", "xls", "csv"],
+        help="Sayaç ID → EIC ve müşteri eşleştirmesi için Excel veya CSV dosyasını seçin.",
     )
     render_reconciliation_consumption_file_picker()
     render_ges_production_file_picker()
@@ -7235,7 +7457,8 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
 
     if select_invoice:
         selected_file = select_excel_file_via_dialog(
-            f"{INVOICE_UPLOAD_LABEL} i\u00e7in Excel dosyas\u0131n\u0131 se\u00e7in"
+            f"{INVOICE_UPLOAD_LABEL} Excel veya CSV dosyas\u0131",
+            allow_csv=True,
         )
         if selected_file:
             st.session_state["selected_invoice_file"] = selected_file
@@ -7266,11 +7489,12 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
 
     if select_eno:
         new_eno_file = select_excel_file_via_dialog(
-            "Kesin Liste Excel dosyasını seçin"
+            "Kesin Liste Excel veya CSV dosyas\u0131n\u0131 se\u00e7in",
+            allow_csv=True,
         )
         if new_eno_file:
-            if Path(new_eno_file).suffix.casefold() not in {".xlsx", ".xlsm", ".xls"}:
-                st.sidebar.error("Lütfen bir Excel dosyası seçin.")
+            if Path(new_eno_file).suffix.casefold() not in {".xlsx", ".xlsm", ".xls", ".csv"}:
+                st.sidebar.error("L\u00fctfen bir Excel veya CSV dosyas\u0131 se\u00e7in.")
             else:
                 st.session_state["selected_eno_file"] = new_eno_file
                 st.session_state["manual_selected_eno_file"] = new_eno_file
@@ -7297,13 +7521,13 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
             placeholder="",
         ).strip()
         invoice_file = st.text_input(
-            f"{INVOICE_UPLOAD_LABEL} Excel dosyas\u0131",
+            f"{INVOICE_UPLOAD_LABEL} Excel veya CSV dosyas\u0131",
             key="manual_selected_invoice_file",
             type="password",
             placeholder="",
         ).strip()
         selected_eno_file = st.text_input(
-            "Kesin Liste Excel dosyası",
+            "Kesin Liste Excel veya CSV dosyas\u0131n\u0131 se\u00e7in",
             key="manual_selected_eno_file",
             type="password",
             placeholder="",
@@ -7323,7 +7547,7 @@ def render_native_sidebar_inputs() -> tuple[str, str, str]:
 def render_ges_production_file_picker() -> None:
     """Select the supplier LUM workbook used for the GES production workflow."""
     selected_file = str(st.session_state.get("selected_ges_production_file", "")).strip()
-    help_text = "Tedarikçi LUM bildirimi biçimindeki .xlsx dosyasını seçin."
+    help_text = "Tedarik\u00e7i LUM bildirimi bi\u00e7imindeki .xlsx veya .csv dosyas\u0131n\u0131 se\u00e7in."
 
     if uses_browser_file_inputs():
         selected_file = render_browser_excel_picker(
@@ -7332,7 +7556,7 @@ def render_ges_production_file_picker() -> None:
             selected_key="selected_ges_production_file",
             container=st.sidebar,
             help=help_text,
-            file_types=["xlsx"],
+            file_types=["xlsx", "csv"],
             invalidate_analysis=False,
         )
     else:
@@ -7359,12 +7583,13 @@ def render_ges_production_file_picker() -> None:
 
         if select_file:
             new_file = select_excel_file_via_dialog(
-                "GES Üretimi için .xlsx dosyasını seçin",
+                "GES \u00dcretimi i\u00e7in .xlsx veya .csv dosyas\u0131n\u0131 se\u00e7in",
                 initial_path=selected_file,
+                allow_csv=True,
             )
             if new_file:
-                if Path(new_file).suffix.casefold() != ".xlsx":
-                    st.sidebar.error("GES Üretimi için .xlsx biçiminde bir Excel dosyası seçin.")
+                if Path(new_file).suffix.casefold() not in {".xlsx", ".csv"}:
+                    st.sidebar.error("GES \u00dcretimi i\u00e7in .xlsx veya .csv bi\u00e7iminde bir dosya se\u00e7in.")
                 else:
                     st.session_state["selected_ges_production_file"] = new_file
                     st.rerun()
@@ -7551,6 +7776,7 @@ def render_reconciliation_consumption_file_picker() -> None:
             category="reconciliation",
             selected_key="selected_reconciliation_consumption_file",
             container=st.sidebar,
+            file_types=["xlsx", "xlsm", "xls", "csv"],
             help="Seçilen dosya analizlerde kullanılmaya devam eder; değiştirmek için yeniden seçin.",
             invalidate_analysis=False,
         )
@@ -7578,12 +7804,13 @@ def render_reconciliation_consumption_file_picker() -> None:
 
     if select_reconciliation_file:
         new_file = select_excel_file_via_dialog(
-            "Uzlaştırma Tüketim için Excel dosyasını seçin",
+            "Uzla\u015ft\u0131rma T\u00fcketim i\u00e7in Excel veya CSV dosyas\u0131n\u0131 se\u00e7in",
             initial_path=selected_file,
+            allow_csv=True,
         )
         if new_file:
-            if Path(new_file).suffix.casefold() not in {".xlsx", ".xlsm", ".xls"}:
-                st.sidebar.error("Lütfen bir Excel dosyası seçin.")
+            if Path(new_file).suffix.casefold() not in {".xlsx", ".xlsm", ".xls", ".csv"}:
+                st.sidebar.error("L\u00fctfen bir Excel veya CSV dosyas\u0131 se\u00e7in.")
             else:
                 st.session_state["selected_reconciliation_consumption_file"] = new_file
                 st.rerun()

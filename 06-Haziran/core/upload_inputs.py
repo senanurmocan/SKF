@@ -24,6 +24,7 @@ from typing import Any, Callable
 MIB = 1024 * 1024
 DISTRIBUTION_EXTENSIONS = {".xlsx", ".xls", ".xml", ".html"}
 EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
+CSV_UPLOAD_CATEGORIES = {"invoice", "eno", "reconciliation", "ges_production"}
 
 
 class UploadInputError(ValueError):
@@ -230,12 +231,18 @@ class UploadWorkspace:
         return str(result)
 
     def stage_file(self, upload: Any, category: str) -> str:
-        """Stage a single Excel workbook, retaining its original base name."""
+        """Stage a workbook or supported CSV input, retaining its base name."""
         self._ensure_open()
         parts = _relative_parts(getattr(upload, "name", None))
         filename = parts[-1]
-        if _ignored(parts) or Path(filename).suffix.casefold() not in EXCEL_EXTENSIONS:
-            raise UploadInputError("Lütfen .xlsx, .xlsm veya .xls biçiminde bir Excel dosyası seçin.")
+        extension = Path(filename).suffix.casefold()
+        supports_csv = category in CSV_UPLOAD_CATEGORIES
+        if _ignored(parts) or (
+            extension not in EXCEL_EXTENSIONS
+            and not (supports_csv and extension == ".csv")
+        ):
+            allowed_formats = ".xlsx, .xlsm, .xls, .csv" if supports_csv else ".xlsx, .xlsm, .xls"
+            raise UploadInputError(f"Lütfen {allowed_formats} biçiminde bir dosya seçin.")
         data = self._read_upload(upload)
         digest = hashlib.sha256(filename.encode("utf-8") + b"\0")
         digest.update(data)

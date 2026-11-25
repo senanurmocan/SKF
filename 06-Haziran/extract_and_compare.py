@@ -315,6 +315,7 @@ from core.source_header_validator import (
     is_known_source_header_layout,
     known_layout_change_warning,
 )
+from core.csv_reader import iter_csv_rows
 
 # ── Modüler yapı importları ──────────────────────────────────────────────
 # Aşağıdaki modüller, bu monolitik dosyadaki fonksiyonların bağımsız
@@ -2612,7 +2613,7 @@ def _find_eno_file(base_path, eno_file_path=None):
 
     Otomatik arama önce ana klasördeki dosyaları, sonra alt klasörleri tarar.
     """
-    supported_extensions = {'.xlsx', '.xlsm', '.xls'}
+    supported_extensions = {'.xlsx', '.xlsm', '.xls', '.csv'}
     if eno_file_path:
         selected_path = os.path.abspath(os.path.expandvars(os.path.expanduser(eno_file_path)))
         if (
@@ -2660,6 +2661,35 @@ def _load_eno_lookups(eno_path):
     eic_to_abone = {}     # str(EIC Kod) → str(Abone Ad-Soyad)
     
     try:
+        if os.path.splitext(eno_path)[1].casefold() == '.csv':
+            row_count = 0
+            for row_number, row in enumerate(iter_csv_rows(eno_path), start=1):
+                if row_number < 3:
+                    continue
+                row_count += 1
+                d_val = row[3] if len(row) > 3 else None
+                e_val = row[4] if len(row) > 4 else None
+                ad_val = row[29] if len(row) > 29 else None
+                d_val = d_val.strip() if isinstance(d_val, str) else d_val
+                e_val = e_val.strip() if isinstance(e_val, str) else e_val
+                ad_val = ad_val.strip() if isinstance(ad_val, str) else ad_val
+
+                if d_val:
+                    eic_str = str(d_val).strip()
+                    if e_val:
+                        e_str = str(e_val).strip()
+                        if '.' in e_str:
+                            try:
+                                e_str = str(int(float(e_str)))
+                            except (ValueError, TypeError):
+                                pass
+                        sayac_id_to_eic[e_str] = eic_str
+                        eic_to_sayac_id[eic_str.casefold()] = e_str
+                    if ad_val:
+                        eic_to_abone[eic_str.casefold()] = str(ad_val).strip()
+            print(f"  [ENO] {row_count} CSV satırı okundu: {len(sayac_id_to_eic)} Sayaç ID→EIC, {len(eic_to_abone)} EIC→Abone")
+            return sayac_id_to_eic, eic_to_sayac_id, eic_to_abone
+
         wb = openpyxl.load_workbook(eno_path, read_only=True, data_only=True)
         ws = wb.active
         # Some ENO exports declare <dimension ref="A1"> despite containing

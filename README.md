@@ -45,10 +45,11 @@ klasörlerinin yapısını koruyun; tarayıcıya tek dosya gönderildiği için 
 onayı açılmaz. ZIP en fazla 200 MB olabilir; içindeki dosya başına 50 MB, toplam 400 MB
 ve 2.000 dosya sınırları uygulanır. `.xlsx`, `.xls`, `.xml` ve `.html` dosyaları desteklenir.
 
-Bizim Kestiğimiz Faturalar, Uzlaştırma Tüketim, Kesin Liste ve Sistem Kullanım
-Bedelleri için ayrı Excel yükleme alanları vardır. Bizim Kestiğimiz Faturalar,
-dağıtım yüklenmeden tek başına işlenebilir. Uzlaştırma dosyası her analizden sonra
-yeniden seçilir. Kesin Liste seçimi yalnızca açık uygulama oturumunda tutulur;
+Bizim Kestiğimiz Faturalar, Uzlaştırma Tüketim, GES Üretimi ve Kesin Liste için
+`.xlsx`, `.xlsm`, `.xls` ve `.csv` dosyaları seçilebilir. Sistem Kullanım Bedelleri
+için ayrı Excel yükleme alanı vardır. Bizim Kestiğimiz Faturalar, dağıtım yüklenmeden
+tek başına işlenebilir. Uzlaştırma dosyası her analizden sonra yeniden seçilir.
+Kesin Liste seçimi yalnızca açık uygulama oturumunda tutulur;
 uygulama yeniden açıldığında yeniden seçilmelidir. Windows dosya penceresi önceki
 Kesin Liste seçimini başlangıç yolu olarak kullanmaz. Kaynak değişince önceki analiz
 sonucu temizlenir.
