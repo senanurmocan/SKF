@@ -5697,6 +5697,7 @@ def add_invoice_distribution_comparison_worksheet(
 
     for output_row, (invoice_sheet, invoice_row, invoice_columns, match_status, distribution_row) in enumerate(comparisons, start=2):
         mismatched_columns: set[int] = set()
+        is_region_summary_input = invoice_sheet.title in region_summary_sheet_names
         invoice_company = invoice_sheet.cell(invoice_row, invoice_columns["company"]).value
         invoice_company_present = (
             invoice_company is not None
@@ -5766,6 +5767,7 @@ def add_invoice_distribution_comparison_worksheet(
                 distribution_row is not None
                 and own_column >= 4
                 and own_key in {"tariff", "abone", "term", "connection", "power"}
+                and (own_key != "tariff" or is_region_summary_input)
                 and detail_column_map.get(distribution_key) is not None
                 and compare_source_values(
                     invoice_sheet.cell(invoice_row, invoice_columns[own_key]).value,
@@ -8350,19 +8352,23 @@ def render_analysis_panel(
     group_comparison_available = any(
         source.get("reconciliation_sheet_name") for source in invoice_sources
     )
-    st.markdown("#### Tarife Grubu Farklar\u0131")
-    tariff_mismatches = st.session_state.get("tariff_group_mismatches") or []
-    if group_comparison_available and tariff_mismatches:
-        st.dataframe(
-            pd.DataFrame(tariff_mismatches),
-            hide_index=True,
-            use_container_width=True,
-            height=260,
-        )
-    elif group_comparison_available:
-        st.success("Tarife grubu farkl\u0131 olan ETSO kayd\u0131 bulunamad\u0131.")
-    else:
-        st.caption("Tarife grubu farklar\u0131n\u0131 g\u00f6rmek i\u00e7in fatura ve da\u011f\u0131t\u0131m verisi i\u00e7eren bir analiz \u00e7al\u0131\u015ft\u0131r\u0131n.")
+    region_summary_available = any(
+        source.get("invoice_format") == "region_summary" for source in invoice_sources
+    )
+    if region_summary_available:
+        st.markdown("#### Tarife Grubu Farklar\u0131")
+        tariff_mismatches = st.session_state.get("tariff_group_mismatches") or []
+        if group_comparison_available and tariff_mismatches:
+            st.dataframe(
+                pd.DataFrame(tariff_mismatches),
+                hide_index=True,
+                use_container_width=True,
+                height=260,
+            )
+        elif group_comparison_available:
+            st.success("Tarife grubu farkl\u0131 olan ETSO kayd\u0131 bulunamad\u0131.")
+        else:
+            st.caption("Tarife grubu farklar\u0131n\u0131 g\u00f6rmek i\u00e7in fatura ve da\u011f\u0131t\u0131m verisi i\u00e7eren bir analiz \u00e7al\u0131\u015ft\u0131r\u0131n.")
 
     st.markdown("#### Abone Grubu Farklar\u0131")
     group_mismatches = st.session_state.get("subscription_group_mismatches") or []
@@ -8536,7 +8542,7 @@ def main() -> None:
                     "Dosyalarınız yerelde işlenir; uygulama Python kurulumu gerektirmez."
                 )
                 st.caption(
-                    "ZIP'i çıkarın, `SKF'yi Başlat.bat` dosyasına çift tıklayın. "
+                    "ZIP'i indirip çıkarın; `SKF'yi Başlat.bat` dosyasına çift tıklayın. "
                     "Paket Windows 64-bit içindir."
                 )
         st.divider()
